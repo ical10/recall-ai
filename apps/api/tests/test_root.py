@@ -1,4 +1,4 @@
-def test_index_renders_with_htmx_and_tailwind(client):
+def test_index_renders_with_htmx_and_compiled_tailwind(client):
     response = client.get("/")
 
     assert response.status_code == 200
@@ -7,4 +7,5 @@ def test_index_renders_with_htmx_and_tailwind(client):
     body = response.text
     assert "RecallAI" in body
     assert "htmx.org" in body
-    assert "tailwindcss" in body
+    assert "/static/css/output.css" in body
+    assert "cdn.tailwindcss.com" not in body
