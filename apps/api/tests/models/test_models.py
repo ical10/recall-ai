@@ -100,6 +100,13 @@ def test_review_model_table_and_columns() -> None:
     assert cols["suspended"].default.arg is False
 
 
+def test_timestamp_columns_are_timezone_aware() -> None:
+    from app.models.user import User
+
+    assert User.__table__.columns["created_at"].type.timezone is True
+    assert User.__table__.columns["updated_at"].type.timezone is True
+
+
 def test_review_has_unique_user_vocab_pair() -> None:
     uniques = [
         tuple(sorted(c.name for c in u.columns))
