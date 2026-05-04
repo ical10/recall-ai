@@ -54,3 +54,6 @@ htmlcov/
 .env
 .env.*
 !.env.example
+
+# Tailwind compiled output
+apps/api/static/css/output.css
