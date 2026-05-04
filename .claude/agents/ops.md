@@ -46,7 +46,9 @@ You are the Ops agent for RecallAI. You manage deployment, infrastructure, Railw
 ## environment variables (never hardcode)
 - `DATABASE_URL` — Railway postgres URL
 - `REDIS_URL` — Railway redis URL
-- `ANTHROPIC_API_KEY` — Claude API key
+- `OPENROUTER_API_KEY` — OpenRouter API key (used via OpenAI SDK; format `sk-or-v1-...`)
+- `LLM_MODEL` — optional, defaults to a free OpenRouter model
+- `OPENROUTER_BASE_URL` — optional, defaults to `https://openrouter.ai/api/v1`
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — OAuth credentials
 - `SECRET_KEY` — app secret for session signing
 

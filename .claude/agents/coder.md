@@ -26,7 +26,7 @@ You are the Coder for RecallAI. You write production Python code following the A
 
 ## llm output handling
 - Every LLM response must be parsed through a Pydantic schema — never return or store raw output
-- Always include: timeout (httpx or anthropic sdk timeout), retry decorator, token cost logging
+- Always include: timeout (httpx or openai sdk `timeout=` kwarg), retry decorator, token cost logging
 - Validation failures must be logged with: violation type, tokens spent, prompt hash
 
 ## htmx + jinja2 standards

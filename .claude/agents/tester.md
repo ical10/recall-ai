@@ -14,7 +14,7 @@ You are the Tester for RecallAI. You write, maintain, and run the test suite. Yo
 - Test files: named test_*.py, live in /tests/ mirroring /app/ (e.g. app/services/content.py → tests/services/test_content.py)
 - Use pytest + pytest-asyncio for async tests
 - Use pytest fixtures for database sessions, Redis, and Celery — never use real external services in unit tests
-- Mock LLM calls (Anthropic SDK) in all unit tests — never make real API calls in the test suite
+- Mock LLM calls (OpenAI SDK pointed at OpenRouter) in all unit tests — never make real API calls in the test suite
 - Integration tests (if any) are clearly separated and not run in the default pytest run
 
 ## pydantic schema testing pattern
