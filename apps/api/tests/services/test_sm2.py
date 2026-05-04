@@ -78,3 +78,58 @@ def test_hard_quality_treated_as_failure() -> None:
     update = compute_next_review(state, ReviewQuality.HARD)
     assert update.repetitions == 0
     assert update.interval_days == 1
+
+
+def test_first_success_sets_interval_to_1() -> None:
+    from app.services.sm2 import compute_next_review
+
+    state = ReviewState(ease_factor=2.5, interval_days=0, repetitions=0)
+    update = compute_next_review(state, ReviewQuality.GOOD)
+    assert update.repetitions == 1
+    assert update.interval_days == 1
+
+
+def test_second_success_sets_interval_to_6() -> None:
+    from app.services.sm2 import compute_next_review
+
+    state = ReviewState(ease_factor=2.5, interval_days=1, repetitions=1)
+    update = compute_next_review(state, ReviewQuality.GOOD)
+    assert update.repetitions == 2
+    assert update.interval_days == 6
+
+
+def test_third_success_multiplies_by_ease_factor() -> None:
+    from app.services.sm2 import compute_next_review
+
+    state = ReviewState(ease_factor=2.5, interval_days=6, repetitions=2)
+    update = compute_next_review(state, ReviewQuality.GOOD)
+    assert update.repetitions == 3
+    assert update.interval_days == 15  # round(6 * 2.5) = 15
+
+
+def test_subsequent_success_continues_to_multiply() -> None:
+    from app.services.sm2 import compute_next_review
+
+    state = ReviewState(ease_factor=2.6, interval_days=15, repetitions=3)
+    update = compute_next_review(state, ReviewQuality.EASY)
+    assert update.repetitions == 4
+    # EASY (q=5): delta=0.1, new_ease=2.7; round(15 * 2.7) = 40
+    assert update.interval_days == 40
+
+
+def test_good_quality_keeps_ease_factor() -> None:
+    from app.services.sm2 import compute_next_review
+
+    state = ReviewState(ease_factor=2.5, interval_days=0, repetitions=0)
+    update = compute_next_review(state, ReviewQuality.GOOD)
+    # GOOD (q=4): delta = 0.1 - 1*(0.08 + 1*0.02) = 0.1 - 0.10 = 0
+    assert update.ease_factor == pytest.approx(2.5, abs=1e-9)
+
+
+def test_easy_quality_increases_ease_factor() -> None:
+    from app.services.sm2 import compute_next_review
+
+    state = ReviewState(ease_factor=2.5, interval_days=0, repetitions=0)
+    update = compute_next_review(state, ReviewQuality.EASY)
+    # EASY (q=5): delta = 0.1 - 0*(0.08 + 0) = 0.1
+    assert update.ease_factor == pytest.approx(2.6, abs=1e-9)
