@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+*.egg-info/
+dist/
+build/
+
+# Alembic
+alembic/versions/*.pyc
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Node
+node_modules/
+.pnpm-store/
+
+# Turborepo
+.turbo/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Mypy
+.mypy_cache/
+
+# Ruff
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+
+# Claude Code per-developer overrides + tdd-guard runtime
+.claude/settings.local.json
+.claude/tdd-guard/data/test.json
+.claude/tdd-guard/data/modifications.json
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example

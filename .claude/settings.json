@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '\\n⚠️  Session ending — remember to run /session-end to save to your Obsidian vault.'"
+          }
+        ]
+      }
+    ]
+  }
+}

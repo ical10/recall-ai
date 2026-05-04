@@ -1,0 +1,31 @@
+[project]
+name = "recall-ai"
+version = "0.1.0"
+description = "Spaced-repetition vocabulary trainer for ESL learners."
+requires-python = ">=3.11,<3.12"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "tdd-guard-pytest>=0.1",
+    "ruff>=0.7",
+    "mypy>=1.13",
+]
+
+[tool.pytest.ini_options]
+tdd_guard_project_root = "/Users/rizal/GDrive/recall-ai"
+testpaths = ["apps/api/tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["apps/api/app"]
+mypy_path = "apps/api"
+explicit_package_bases = true
