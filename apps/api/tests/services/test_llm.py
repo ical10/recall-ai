@@ -8,7 +8,7 @@ from openai.types.completion_usage import CompletionUsage
 from pydantic import ValidationError
 
 from app.schemas.llm import LLMOutput, SimpleVocabExample
-from app.services.llm import LLMClient
+from app.services.llm import LLMClient, LLMValidationFailure
 
 
 def _fake_completion(
@@ -111,3 +111,59 @@ def test_complete_logs_token_usage(caplog: pytest.LogCaptureFixture) -> None:
         getattr(r, "prompt_tokens", None) == 123 and getattr(r, "completion_tokens", None) == 45
         for r in log_records
     )
+
+
+def test_complete_retries_with_refined_prompt_on_validation_failure() -> None:
+    fake_openai = MagicMock()
+    fake_openai.chat.completions.create.side_effect = [
+        _fake_completion(json.dumps({"token": "ephemeral"})),
+        _fake_completion(
+            json.dumps(
+                {
+                    "token": "ephemeral",
+                    "definition": "Lasting briefly; transient and short-lived.",
+                    "example": "The cherry blossoms were ephemeral but unforgettable.",
+                }
+            )
+        ),
+    ]
+
+    client = LLMClient(openai_client=fake_openai, model="test-model", timeout_s=10.0)
+    result = client.complete("Define ephemeral.", SimpleVocabExample, max_retries=3)
+
+    assert isinstance(result, SimpleVocabExample)
+    assert fake_openai.chat.completions.create.call_count == 2
+
+    second_messages = fake_openai.chat.completions.create.call_args_list[1].kwargs["messages"]
+    refinement = second_messages[-1]["content"]
+    assert "previous response failed validation" in refinement.lower()
+    assert "definition" in refinement or "example" in refinement
+
+
+def test_complete_raises_after_max_retries_exhausted() -> None:
+    fake_openai = MagicMock()
+    fake_openai.chat.completions.create.return_value = _fake_completion(json.dumps({"token": "x"}))
+    client = LLMClient(openai_client=fake_openai, model="test-model", timeout_s=10.0)
+
+    with pytest.raises(LLMValidationFailure) as excinfo:
+        client.complete("Define x.", SimpleVocabExample, max_retries=3)
+
+    assert excinfo.value.attempts == 3
+    assert fake_openai.chat.completions.create.call_count == 3
+
+
+def test_complete_logs_attempt_number_on_each_call(caplog: pytest.LogCaptureFixture) -> None:
+    import logging
+
+    fake_openai = MagicMock()
+    fake_openai.chat.completions.create.return_value = _fake_completion(json.dumps({"token": "x"}))
+    client = LLMClient(openai_client=fake_openai, model="test-model", timeout_s=10.0)
+
+    with (
+        caplog.at_level(logging.INFO, logger="app.services.llm"),
+        pytest.raises(LLMValidationFailure),
+    ):
+        client.complete("Define x.", SimpleVocabExample, max_retries=3)
+
+    attempts = [getattr(r, "attempt", None) for r in caplog.records if r.levelname == "INFO"]
+    assert attempts == [1, 2, 3]

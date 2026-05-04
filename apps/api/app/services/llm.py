@@ -2,6 +2,8 @@ import logging
 from typing import TypeVar
 
 from openai import OpenAI
+from openai.types.chat import ChatCompletionMessageParam
+from pydantic import ValidationError
 
 from app.schemas.llm import LLMOutput
 
@@ -11,7 +13,10 @@ logger = logging.getLogger(__name__)
 
 
 class LLMValidationFailure(Exception):
-    pass
+    def __init__(self, message: str, attempts: int, last_error: ValidationError | None) -> None:
+        super().__init__(message)
+        self.attempts = attempts
+        self.last_error = last_error
 
 
 class LLMClient:
@@ -28,21 +33,49 @@ class LLMClient:
 
     def complete(self, prompt: str, response_schema: type[T], max_retries: int = 3) -> T:
         assert self._client is not None
-        completion = self._client.chat.completions.create(
-            model=self._model or "",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            timeout=self._timeout_s,
+        messages: list[ChatCompletionMessageParam] = [{"role": "user", "content": prompt}]
+        last_error: ValidationError | None = None
+
+        for attempt in range(1, max_retries + 1):
+            completion = self._client.chat.completions.create(
+                model=self._model or "",
+                messages=messages,
+                response_format={"type": "json_object"},
+                timeout=self._timeout_s,
+            )
+            usage = completion.usage
+            logger.info(
+                "llm_call",
+                extra={
+                    "model": self._model,
+                    "prompt_tokens": usage.prompt_tokens if usage else 0,
+                    "completion_tokens": usage.completion_tokens if usage else 0,
+                    "attempt": attempt,
+                },
+            )
+            content = completion.choices[0].message.content or ""
+
+            try:
+                return response_schema.model_validate_json(content)
+            except ValidationError as e:
+                last_error = e
+                logger.warning(
+                    "llm_validation_failed",
+                    extra={"attempt": attempt, "errors": e.errors()},
+                )
+                messages.append({"role": "assistant", "content": content})
+                messages.append({"role": "user", "content": _refinement_message(e)})
+
+        raise LLMValidationFailure(
+            f"validation failed after {max_retries} attempts",
+            attempts=max_retries,
+            last_error=last_error,
         )
-        usage = completion.usage
-        logger.info(
-            "llm_call",
-            extra={
-                "model": self._model,
-                "prompt_tokens": usage.prompt_tokens if usage else 0,
-                "completion_tokens": usage.completion_tokens if usage else 0,
-                "attempt": 1,
-            },
-        )
-        content = completion.choices[0].message.content or ""
-        return response_schema.model_validate_json(content)
+
+
+def _refinement_message(error: ValidationError) -> str:
+    lines = ["Your previous response failed validation. Please fix and resend valid JSON only."]
+    for err in error.errors():
+        loc = ".".join(str(p) for p in err["loc"])
+        lines.append(f"- field `{loc}`: {err['msg']}")
+    return "\n".join(lines)
