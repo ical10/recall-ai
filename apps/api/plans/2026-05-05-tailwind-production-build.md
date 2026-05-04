@@ -69,11 +69,11 @@ The `start` script does NOT include `build:css` because Nixpacks runs `build:css
 - [ ] **Step 1**: Create `apps/api/tailwind.config.js`:
 
 ```js
+const path = require('path')
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: [
-    './templates/**/*.html',
-  ],
+  content: [path.join(__dirname, 'templates/**/*.html')],
   theme: {
     extend: {},
   },
@@ -81,7 +81,11 @@ module.exports = {
 }
 ```
 
-The `content` glob is relative to the directory `tailwindcss` is invoked from. Since the `build:css` script passes `-c apps/api/tailwind.config.js` from the repo root, Tailwind treats the config file's directory as the base — `apps/api/templates/**/*.html` resolves correctly.
+The content glob uses `path.join(__dirname, 'templates/**/*.html')` so it resolves
+relative to the config file's directory regardless of where `tailwindcss` is invoked
+from. (Tailwind 3.4's default glob resolution is CWD-relative — using `__dirname`
+makes the config robust against being run from any directory, e.g. by Nixpacks or
+an IDE task runner.)
 
 - [ ] **Step 2**: Create `apps/api/static/css/input.css`:
 
@@ -91,10 +95,10 @@ The `content` glob is relative to the directory `tailwindcss` is invoked from. S
 @tailwind utilities;
 ```
 
-- [ ] **Step 3**: Run `pnpm build:css` from the repo root. Confirm `apps/api/static/css/output.css` is created and is non-empty (should be a few KB after JIT minification scans the index template).
+- [ ] **Step 3**: Run `pnpm build:css` from the repo root. Confirm `apps/api/static/css/output.css` is created and contains utility classes (should be a few KB after JIT minification scans the index template).
 
   ```bash
-  pnpm build:css && ls -la apps/api/static/css/output.css && head -c 200 apps/api/static/css/output.css
+  pnpm build:css && ls -la apps/api/static/css/output.css && grep -q "min-h-screen" apps/api/static/css/output.css && echo "OK: utility classes present"
   ```
 
 - [ ] **Step 4**: Commit — `feat: add Tailwind 3 config and input.css entrypoint` (do NOT stage `output.css`; the next task gitignores it).
