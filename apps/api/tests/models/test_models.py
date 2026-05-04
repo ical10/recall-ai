@@ -2,6 +2,7 @@ from sqlalchemy.orm import DeclarativeBase
 
 from app.models.base import Base, TimestampMixin
 from app.models.user import User
+from app.models.vocab_item import VocabItem
 
 
 def test_base_is_declarative_base() -> None:
@@ -40,3 +41,30 @@ def test_user_model_table_and_columns() -> None:
     assert cols["email"].nullable is False
     assert cols["google_id"].nullable is False
     assert cols["avatar_url"].nullable is True
+
+
+def test_vocab_item_model_table_and_columns() -> None:
+    assert VocabItem.__tablename__ == "vocab_items"
+    cols = {c.name: c for c in VocabItem.__table__.columns}
+    assert set(cols) == {
+        "id",
+        "token",
+        "language",
+        "part_of_speech",
+        "definition",
+        "example_sentence",
+        "audio_url",
+        "created_at",
+        "updated_at",
+    }
+    assert cols["token"].nullable is False
+    assert cols["language"].nullable is False
+    assert cols["definition"].nullable is False
+    assert cols["audio_url"].nullable is True
+    # Composite uniqueness on (token, language)
+    uniques = [
+        tuple(sorted(c.name for c in u.columns))
+        for u in VocabItem.__table__.constraints
+        if u.__class__.__name__ == "UniqueConstraint"
+    ]
+    assert ("language", "token") in uniques
