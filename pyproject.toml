@@ -45,3 +45,7 @@ files = ["apps/api/app"]
 mypy_path = "apps/api"
 explicit_package_bases = true
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = "celery.*"
+ignore_missing_imports = true
