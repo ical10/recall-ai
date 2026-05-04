@@ -39,6 +39,24 @@
 - all auth-related code must be written by hand — ai-generated auth logic is not accepted as-is
 - user data access must be audited manually before any PR is considered complete
 
+## run / deploy
+- `.env` lives at the repo root (copied from `.env.example`); `pydantic-settings` reads it relative to the CWD where uvicorn runs, which is the repo root.
+- dev: `pnpm dev` → `uv run uvicorn app.main:app --app-dir apps/api --reload --port 8000`. server-rendered htmx + jinja2 + tailwind cdn means there is no separate "frontend" — the FastAPI app *is* the frontend. open http://localhost:8000.
+- prod (local sanity): `pnpm start` → same command, no `--reload`, binds `0.0.0.0:$PORT` (defaults to 8000).
+- celery worker (local or railway): `pnpm worker` → `uv run --project . celery -A app.core.celery_app:celery_app --workdir apps/api worker --loglevel=info`.
+- celery beat (local or railway): `pnpm beat` → same with `beat` instead of `worker`.
+- tests: `pnpm test` (full suite) or `uv run pytest <path>` for a single file.
+- lint + types: `pnpm lint` runs ruff check + ruff format check + mypy strict on `apps/api/app`.
+
+### railway
+- one repo, three services. each service points at this repo and overrides the start command in the railway dashboard:
+  - **web**: leave default — `railway.json` already specifies the uvicorn command + `/healthz` healthcheck.
+  - **worker**: start command `uv run --project . celery -A app.core.celery_app:celery_app --workdir apps/api worker --loglevel=info`
+  - **beat**: start command `uv run --project . celery -A app.core.celery_app:celery_app --workdir apps/api beat --loglevel=info`
+- nixpacks build is configured in `nixpacks.toml`: installs python 3.11 + uv, runs `uv sync --frozen --no-dev`. all three services share the same image — only the start command differs.
+- env vars (`DATABASE_URL`, `REDIS_URL`, `ANTHROPIC_API_KEY`, `SECRET_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) come from railway env / shared variables. railway's postgres + redis addons inject `DATABASE_URL` and `REDIS_URL` automatically when attached.
+- tailwind play cdn is fine for early deploys; precompile to `apps/api/static/css/` before going public (separate plan).
+
 ## conventions
 - all api endpoints async; all celery tasks sync (celery 5 limitation — do not use async def in tasks)
 - pydantic v2 schemas for every request/response body and every llm output boundary
