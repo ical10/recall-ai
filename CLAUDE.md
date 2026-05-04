@@ -2,7 +2,7 @@
 
 ## project
 - name: RecallAI
-- stack: python 3.11, fastapi, htmx, jinja2, tailwind css, postgres via sqlalchemy 2.0 (async), redis, celery 5, pydantic v2, anthropic sdk
+- stack: python 3.11, fastapi, htmx, jinja2, tailwind css, postgres via sqlalchemy 2.0 (async), redis, celery 5, pydantic v2, openai sdk (via openrouter)
 - deployed on railway: web service + celery worker + celery beat + postgres addon + redis addon
 - monorepo managed with pnpm workspaces + turborepo
 - domain: spaced-repetition vocabulary trainer with llm-generated content for esl learners
@@ -54,7 +54,7 @@
   - **worker**: start command `uv run --project . celery -A app.core.celery_app:celery_app --workdir apps/api worker --loglevel=info`
   - **beat**: start command `uv run --project . celery -A app.core.celery_app:celery_app --workdir apps/api beat --loglevel=info`
 - nixpacks build is configured in `nixpacks.toml`: installs python 3.11 + uv, runs `uv sync --frozen --no-dev`. all three services share the same image — only the start command differs.
-- env vars (`DATABASE_URL`, `REDIS_URL`, `ANTHROPIC_API_KEY`, `SECRET_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) come from railway env / shared variables. railway's postgres + redis addons inject `DATABASE_URL` and `REDIS_URL` automatically when attached.
+- required env vars: `DATABASE_URL`, `REDIS_URL`, `OPENROUTER_API_KEY`, `SECRET_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`. optional: `LLM_MODEL` (defaults to a free OpenRouter model — override per environment, e.g. prod = `openai/gpt-4o-mini`), `OPENROUTER_BASE_URL` (defaults to `https://openrouter.ai/api/v1`). all come from railway env / shared variables. railway's postgres + redis addons inject `DATABASE_URL` and `REDIS_URL` automatically when attached.
 - tailwind play cdn is fine for early deploys; precompile to `apps/api/static/css/` before going public (separate plan).
 
 ## conventions
@@ -79,7 +79,7 @@
 - chose sqlalchemy 2.0 over 1.x style (may 2026): typed Mapped[] columns catch model bugs at write-time
 - chose celery + redis over fastapi BackgroundTasks (may 2026): cron scheduling via celery beat required for nightly content generation; celery is the production standard for python async work
 - chose pydantic v2 over manual validation (may 2026): 5x faster than v1; strict mode + custom validators are the core abstraction for llm output validation
-- chose anthropic claude over openai (may 2026): tighter instruction-following on short factual content during early prototyping
+- chose openai sdk targeting openrouter over anthropic sdk (2026-05-04, supersedes earlier may-2026 anthropic call): openrouter is openai-api-compatible so the openai python sdk works as the client; gives access to `:free` models for dev/staging while letting prod swap to any paid model (openai, anthropic, google) by changing the `LLM_MODEL` env var with no code change. dev defaults to `meta-llama/llama-3.3-70b-instruct:free`; prod should pick a paid model with reliable structured-output support. retry-with-prompt-refinement loop already planned absorbs the lower instruction-following quality of free models.
 - chose sm-2 over fsrs for spaced repetition (may 2026): simpler to implement and explain, sufficient for poc; fsrs is a candidate upgrade if data volume justifies it
 - chose google oauth over password auth (may 2026): simpler for solo/small-user-base, no password storage risk
 - chose htmx + jinja2 over next.js (may 2026): spaced-repetition ui is server-driven (show card, reveal, rate, next) — no complex client state; keeps entire stack in python, eliminates context switching, ships faster; next.js is a candidate if a mobile-web hybrid is needed later
