@@ -133,3 +133,21 @@ def test_easy_quality_increases_ease_factor() -> None:
     update = compute_next_review(state, ReviewQuality.EASY)
     # EASY (q=5): delta = 0.1 - 0*(0.08 + 0) = 0.1
     assert update.ease_factor == pytest.approx(2.6, abs=1e-9)
+
+
+def test_compute_is_deterministic() -> None:
+    from app.services.sm2 import compute_next_review
+
+    state = ReviewState(ease_factor=2.5, interval_days=10, repetitions=3)
+    a = compute_next_review(state, ReviewQuality.GOOD)
+    b = compute_next_review(state, ReviewQuality.GOOD)
+    assert a == b
+
+
+def test_compute_does_not_mutate_input() -> None:
+    from app.services.sm2 import compute_next_review
+
+    state = ReviewState(ease_factor=2.5, interval_days=10, repetitions=3)
+    snapshot = state.model_copy()
+    compute_next_review(state, ReviewQuality.AGAIN)
+    assert state == snapshot
