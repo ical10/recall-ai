@@ -1,6 +1,7 @@
 from sqlalchemy.orm import DeclarativeBase
 
 from app.models.base import Base, TimestampMixin
+from app.models.review import Review, ReviewQuality
 from app.models.user import User
 from app.models.vocab_item import VocabItem
 
@@ -68,3 +69,41 @@ def test_vocab_item_model_table_and_columns() -> None:
         if u.__class__.__name__ == "UniqueConstraint"
     ]
     assert ("language", "token") in uniques
+
+
+def test_review_quality_enum_values() -> None:
+    assert ReviewQuality.AGAIN == 0
+    assert ReviewQuality.HARD == 2
+    assert ReviewQuality.GOOD == 4
+    assert ReviewQuality.EASY == 5
+
+
+def test_review_model_table_and_columns() -> None:
+    assert Review.__tablename__ == "reviews"
+    cols = {c.name: c for c in Review.__table__.columns}
+    assert set(cols) == {
+        "id",
+        "user_id",
+        "vocab_item_id",
+        "ease_factor",
+        "interval_days",
+        "repetitions",
+        "last_reviewed_at",
+        "due_at",
+        "suspended",
+        "created_at",
+        "updated_at",
+    }
+    assert cols["ease_factor"].default.arg == 2.5
+    assert cols["interval_days"].default.arg == 0
+    assert cols["repetitions"].default.arg == 0
+    assert cols["suspended"].default.arg is False
+
+
+def test_review_has_unique_user_vocab_pair() -> None:
+    uniques = [
+        tuple(sorted(c.name for c in u.columns))
+        for u in Review.__table__.constraints
+        if u.__class__.__name__ == "UniqueConstraint"
+    ]
+    assert ("user_id", "vocab_item_id") in uniques
