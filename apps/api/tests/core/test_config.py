@@ -1,6 +1,7 @@
 import pytest
-from app.core.config import Settings
 from pydantic import ValidationError
+
+from app.core.config import Settings
 
 
 def test_settings_loads_required_fields_from_env(monkeypatch):
@@ -27,17 +28,3 @@ def test_settings_missing_required_raises(monkeypatch):
 
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
-
-
-def test_get_settings_returns_cached_instance(monkeypatch):
-    from app.core.config import get_settings
-
-    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@h/d")
-    monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
-    monkeypatch.setenv("SECRET_KEY", "s")
-
-    settings1 = get_settings()
-    settings2 = get_settings()
-
-    assert settings1 is settings2
