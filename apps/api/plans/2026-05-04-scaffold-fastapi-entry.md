@@ -474,11 +474,12 @@ Expected: collection error — `ModuleNotFoundError: No module named 'app.main'`
 - [ ] **Step 4: Implement `apps/api/app/main.py`**
 
 ```python
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -492,7 +493,7 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
     await engine.dispose()
 
@@ -506,7 +507,7 @@ def create_app() -> FastAPI:
         return JSONResponse({"status": "ok"})
 
     @app.get("/")
-    async def index(request: Request):
+    async def index(request: Request) -> Response:
         return templates.TemplateResponse(request, "pages/index.html")
 
     return app

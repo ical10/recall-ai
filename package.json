@@ -1,0 +1,17 @@
+{
+  "name": "recall-ai",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "dev": "uv run uvicorn app.main:app --app-dir apps/api --reload --port 8000",
+    "start": "uv run uvicorn app.main:app --app-dir apps/api --host 0.0.0.0 --port ${PORT:-8000}",
+    "worker": "uv run --project . celery -A app.core.celery_app:celery_app --workdir apps/api worker --loglevel=info",
+    "beat": "uv run --project . celery -A app.core.celery_app:celery_app --workdir apps/api beat --loglevel=info",
+    "test": "uv run pytest -v",
+    "lint": "uv run ruff check apps/api && uv run ruff format --check apps/api && uv run mypy apps/api/app"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0"
+  }
+}

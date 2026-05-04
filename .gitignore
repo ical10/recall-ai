@@ -20,6 +20,9 @@ celerybeat.pid
 node_modules/
 .pnpm-store/
 
+# Nixpacks (Railway local build artifacts)
+.nixpacks/
+
 # Turborepo
 .turbo/
 
