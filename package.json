@@ -4,8 +4,9 @@
   "private": true,
   "packageManager": "pnpm@9.0.0",
   "scripts": {
-    "dev": "concurrently -n 'css,api' -c 'cyan,green' 'pnpm watch:css' 'uv run uvicorn app.main:app --app-dir apps/api --reload --port 8000'",
-    "build:css": "tailwindcss -c apps/api/tailwind.config.js -i apps/api/static/css/input.css -o apps/api/static/css/output.css --minify",
+    "dev": "concurrently -n 'css,api' -c 'cyan,green' 'pnpm watch:css' 'uv run uvicorn app.main:app --app-dir apps/api --reload --reload-dir apps/api/app --port 8000'",
+    "build:css": "tailwindcss -c apps/api/tailwind.config.js -i apps/api/static/css/input.css -o apps/api/static/css/output.css",
+    "build:css:prod": "tailwindcss -c apps/api/tailwind.config.js -i apps/api/static/css/input.css -o apps/api/static/css/output.css --minify",
     "watch:css": "tailwindcss -c apps/api/tailwind.config.js -i apps/api/static/css/input.css -o apps/api/static/css/output.css --watch",
     "start": "uv run uvicorn app.main:app --app-dir apps/api --host 0.0.0.0 --port ${PORT:-8000}",
     "worker": "uv run --project . celery -A app.core.celery_app:celery_app --workdir apps/api worker --loglevel=info",
