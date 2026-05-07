@@ -457,3 +457,354 @@ def test_get_review_treats_null_due_at_as_due(
     resp = reviews_client.get("/review")
     assert resp.status_code == 200
     assert "null-due-word" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Tests for POST /review/{id}/rate
+# ---------------------------------------------------------------------------
+
+
+def test_rate_rejects_invalid_quality_value(
+    reviews_client: TestClient,
+    in_memory_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from datetime import UTC, datetime
+
+    from app.models.review import Review
+    from app.models.user import User
+    from app.models.vocab_item import VocabItem
+
+    review_id: Any = None
+
+    async def seed() -> None:
+        nonlocal review_id
+        from sqlalchemy import select
+
+        async with in_memory_session_factory() as session:
+            result = await session.execute(select(User).where(User.email == "reviewer@test.com"))
+            user = result.scalar_one_or_none()
+            if user is None:
+                user = User(email="reviewer@test.com", google_id="gid-rev", name="Reviewer")
+                session.add(user)
+                await session.flush()
+            vocab = VocabItem(token="invalid-quality-word", language="en", definition="def")
+            session.add(vocab)
+            await session.flush()
+            review = Review(
+                user_id=user.id,
+                vocab_item_id=vocab.id,
+                due_at=datetime(2026, 1, 1, 9, 0, 0, tzinfo=UTC),
+            )
+            session.add(review)
+            await session.commit()
+            review_id = review.id
+
+    asyncio.run(seed())
+
+    resp = reviews_client.post(f"/review/{review_id}/rate", data={"quality": 3})
+    assert resp.status_code == 422
+
+
+def test_rate_404_when_not_owner(
+    reviews_client: TestClient,
+    in_memory_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from app.models.review import Review
+    from app.models.user import User
+    from app.models.vocab_item import VocabItem
+
+    review_id: Any = None
+
+    async def seed() -> None:
+        nonlocal review_id
+        async with in_memory_session_factory() as session:
+            other = User(email="other-rate@test.com", google_id="gid-other-rate", name="OtherRate")
+            session.add(other)
+            await session.flush()
+            vocab = VocabItem(token="other-rate-word", language="en", definition="def")
+            session.add(vocab)
+            await session.flush()
+            review = Review(user_id=other.id, vocab_item_id=vocab.id)
+            session.add(review)
+            await session.commit()
+            review_id = review.id
+
+    asyncio.run(seed())
+
+    resp = reviews_client.post(f"/review/{review_id}/rate", data={"quality": 4})
+    assert resp.status_code == 404
+
+
+def test_rate_updates_review_with_sm2_output(
+    reviews_client: TestClient,
+    in_memory_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from datetime import UTC, datetime
+
+    from sqlalchemy import select
+
+    from app.models.review import Review
+    from app.models.user import User
+    from app.models.vocab_item import VocabItem
+    from app.schemas.review import ReviewQuality, ReviewState
+    from app.services.sm2 import compute_next_review
+
+    review_id: Any = None
+
+    async def seed() -> None:
+        nonlocal review_id
+        from sqlalchemy import select
+
+        async with in_memory_session_factory() as session:
+            result = await session.execute(select(User).where(User.email == "reviewer@test.com"))
+            user = result.scalar_one_or_none()
+            if user is None:
+                user = User(email="reviewer@test.com", google_id="gid-rev", name="Reviewer")
+                session.add(user)
+                await session.flush()
+            vocab = VocabItem(token="sm2-word", language="en", definition="def-sm2")
+            session.add(vocab)
+            await session.flush()
+            review = Review(
+                user_id=user.id,
+                vocab_item_id=vocab.id,
+                due_at=datetime(2026, 1, 1, 9, 0, 0, tzinfo=UTC),
+                ease_factor=2.5,
+                interval_days=0,
+                repetitions=0,
+            )
+            session.add(review)
+            await session.commit()
+            review_id = review.id
+
+    asyncio.run(seed())
+
+    expected = compute_next_review(
+        ReviewState(ease_factor=2.5, interval_days=0, repetitions=0),
+        ReviewQuality.GOOD,
+    )
+
+    resp = reviews_client.post(f"/review/{review_id}/rate", data={"quality": 4})
+    assert resp.status_code == 200
+
+    async def refetch() -> Review:
+        async with in_memory_session_factory() as session:
+            result = await session.execute(select(Review).where(Review.id == review_id))
+            return result.scalar_one()
+
+    updated = asyncio.run(refetch())
+    assert updated.ease_factor == expected.ease_factor
+    assert updated.interval_days == expected.interval_days
+    assert updated.repetitions == expected.repetitions
+
+
+def test_rate_quality_again_resets_repetitions(
+    reviews_client: TestClient,
+    in_memory_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from datetime import UTC, datetime
+
+    from sqlalchemy import select
+
+    from app.models.review import Review
+    from app.models.user import User
+    from app.models.vocab_item import VocabItem
+
+    review_id: Any = None
+
+    async def seed() -> None:
+        nonlocal review_id
+        from sqlalchemy import select
+
+        async with in_memory_session_factory() as session:
+            result = await session.execute(select(User).where(User.email == "reviewer@test.com"))
+            user = result.scalar_one_or_none()
+            if user is None:
+                user = User(email="reviewer@test.com", google_id="gid-rev", name="Reviewer")
+                session.add(user)
+                await session.flush()
+            vocab = VocabItem(token="again-word", language="en", definition="def-again")
+            session.add(vocab)
+            await session.flush()
+            review = Review(
+                user_id=user.id,
+                vocab_item_id=vocab.id,
+                due_at=datetime(2026, 1, 1, 9, 0, 0, tzinfo=UTC),
+                ease_factor=2.5,
+                interval_days=6,
+                repetitions=2,
+            )
+            session.add(review)
+            await session.commit()
+            review_id = review.id
+
+    asyncio.run(seed())
+
+    resp = reviews_client.post(f"/review/{review_id}/rate", data={"quality": 0})
+    assert resp.status_code == 200
+
+    async def refetch() -> Review:
+        async with in_memory_session_factory() as session:
+            result = await session.execute(select(Review).where(Review.id == review_id))
+            return result.scalar_one()
+
+    updated = asyncio.run(refetch())
+    assert updated.repetitions == 0
+    assert updated.interval_days == 1
+
+
+def test_rate_returns_done_partial_when_no_more_due(
+    reviews_client: TestClient,
+    in_memory_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from datetime import UTC, datetime
+
+    from app.models.review import Review
+    from app.models.user import User
+    from app.models.vocab_item import VocabItem
+
+    review_id: Any = None
+
+    async def seed() -> None:
+        nonlocal review_id
+        from sqlalchemy import select
+
+        async with in_memory_session_factory() as session:
+            result = await session.execute(select(User).where(User.email == "reviewer@test.com"))
+            user = result.scalar_one_or_none()
+            if user is None:
+                user = User(email="reviewer@test.com", google_id="gid-rev", name="Reviewer")
+                session.add(user)
+                await session.flush()
+            vocab = VocabItem(token="only-word", language="en", definition="def-only")
+            session.add(vocab)
+            await session.flush()
+            review = Review(
+                user_id=user.id,
+                vocab_item_id=vocab.id,
+                due_at=datetime(2026, 1, 1, 9, 0, 0, tzinfo=UTC),
+            )
+            session.add(review)
+            await session.commit()
+            review_id = review.id
+
+    asyncio.run(seed())
+
+    resp = reviews_client.post(f"/review/{review_id}/rate", data={"quality": 4})
+    assert resp.status_code == 200
+    assert "All caught up" in resp.text
+
+
+def test_rate_advances_to_next_due_card_in_response(
+    reviews_client: TestClient,
+    in_memory_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from datetime import UTC, datetime
+
+    from app.models.review import Review
+    from app.models.user import User
+    from app.models.vocab_item import VocabItem
+
+    older_review_id: Any = None
+
+    async def seed() -> None:
+        nonlocal older_review_id
+        from sqlalchemy import select
+
+        async with in_memory_session_factory() as session:
+            result = await session.execute(select(User).where(User.email == "reviewer@test.com"))
+            user = result.scalar_one_or_none()
+            if user is None:
+                user = User(email="reviewer@test.com", google_id="gid-rev", name="Reviewer")
+                session.add(user)
+                await session.flush()
+            vocab1 = VocabItem(token="older-rate-word", language="en", definition="def1")
+            vocab2 = VocabItem(token="newer-rate-word", language="en", definition="def2")
+            session.add_all([vocab1, vocab2])
+            await session.flush()
+            review1 = Review(
+                user_id=user.id,
+                vocab_item_id=vocab1.id,
+                due_at=datetime(2026, 1, 1, 8, 0, 0, tzinfo=UTC),
+            )
+            review2 = Review(
+                user_id=user.id,
+                vocab_item_id=vocab2.id,
+                due_at=datetime(2026, 1, 1, 10, 0, 0, tzinfo=UTC),
+            )
+            session.add_all([review1, review2])
+            await session.commit()
+            older_review_id = review1.id
+
+    asyncio.run(seed())
+
+    resp = reviews_client.post(f"/review/{older_review_id}/rate", data={"quality": 4})
+    assert resp.status_code == 200
+    assert "newer-rate-word" in resp.text
+
+
+def test_rate_sets_last_reviewed_at_and_due_at(
+    reviews_client: TestClient,
+    in_memory_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import select
+
+    from app.models.review import Review
+    from app.models.user import User
+    from app.models.vocab_item import VocabItem
+
+    review_id: Any = None
+
+    async def seed() -> None:
+        nonlocal review_id
+        from sqlalchemy import select
+
+        async with in_memory_session_factory() as session:
+            result = await session.execute(select(User).where(User.email == "reviewer@test.com"))
+            user = result.scalar_one_or_none()
+            if user is None:
+                user = User(email="reviewer@test.com", google_id="gid-rev", name="Reviewer")
+                session.add(user)
+                await session.flush()
+            vocab = VocabItem(token="timestamps-word", language="en", definition="def-ts")
+            session.add(vocab)
+            await session.flush()
+            review = Review(
+                user_id=user.id,
+                vocab_item_id=vocab.id,
+                due_at=datetime(2026, 1, 1, 9, 0, 0, tzinfo=UTC),
+            )
+            session.add(review)
+            await session.commit()
+            review_id = review.id
+
+    asyncio.run(seed())
+
+    before = datetime.now(UTC)
+    resp = reviews_client.post(f"/review/{review_id}/rate", data={"quality": 4})
+    after = datetime.now(UTC)
+    assert resp.status_code == 200
+
+    async def refetch() -> Review:
+        async with in_memory_session_factory() as session:
+            result = await session.execute(select(Review).where(Review.id == review_id))
+            return result.scalar_one()
+
+    updated = asyncio.run(refetch())
+
+    last_reviewed = updated.last_reviewed_at
+    due = updated.due_at
+    assert last_reviewed is not None
+    assert due is not None
+
+    # SQLite may return naive datetimes — normalize for comparison
+    if last_reviewed.tzinfo is None:
+        last_reviewed = last_reviewed.replace(tzinfo=UTC)
+    if due.tzinfo is None:
+        due = due.replace(tzinfo=UTC)
+
+    assert before <= last_reviewed <= after
+    expected_due = last_reviewed + timedelta(days=updated.interval_days)
+    assert abs((due - expected_due).total_seconds()) < 1
