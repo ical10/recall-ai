@@ -69,6 +69,34 @@ def test_next_due_review_returns_due_review(in_memory_session_factory: Any) -> N
     asyncio.run(run())
 
 
+def test_get_review_for_user_scopes_by_owner(in_memory_session_factory: Any) -> None:
+    """The helper must return None when the review id belongs to a different user."""
+    from app.api.reviews import _get_review_for_user
+    from app.models.review import Review
+    from app.models.user import User
+    from app.models.vocab_item import VocabItem
+
+    async def run() -> None:
+        async with in_memory_session_factory() as session:
+            owner = User(email="owner@test.com", google_id="g-owner", name="Owner")
+            other = User(email="other@test.com", google_id="g-other", name="Other")
+            session.add_all([owner, other])
+            await session.flush()
+            vocab = VocabItem(token="x", language="en", definition="d")
+            session.add(vocab)
+            await session.flush()
+            review = Review(user_id=owner.id, vocab_item_id=vocab.id)
+            session.add(review)
+            await session.commit()
+
+            owner_view = await _get_review_for_user(session, review.id, owner.id)
+            other_view = await _get_review_for_user(session, review.id, other.id)
+            assert owner_view is not None and owner_view.id == review.id
+            assert other_view is None
+
+    asyncio.run(run())
+
+
 # ---------------------------------------------------------------------------
 # Fixtures for GET /review endpoint tests
 # ---------------------------------------------------------------------------
@@ -342,6 +370,7 @@ def test_reveal_returns_partial_with_definition(
     assert "Hard" in resp.text
     assert "Good" in resp.text
     assert "Easy" in resp.text
+    assert "Reveal definition" not in resp.text
 
 
 def test_reveal_404_when_not_owner(

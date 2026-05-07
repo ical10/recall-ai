@@ -15,6 +15,19 @@ from app.models.review import Review
 router = APIRouter()
 
 
+async def _get_review_for_user(
+    session: AsyncSession,
+    review_id: UUID,
+    user_id: UUID,
+    *,
+    load_vocab: bool = True,
+) -> Review | None:
+    stmt = select(Review).where(Review.id == review_id, Review.user_id == user_id)
+    if load_vocab:
+        stmt = stmt.options(joinedload(Review.vocab_item))
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
 async def _next_due_review(session: AsyncSession, user_id: UUID, now: datetime) -> Review | None:
     stmt = (
         select(Review)
@@ -54,12 +67,7 @@ async def review_reveal(
     session: SessionDep,
     user: UserDep,
 ) -> Response:
-    stmt = (
-        select(Review)
-        .options(joinedload(Review.vocab_item))
-        .where(Review.id == review_id, Review.user_id == user.id)
-    )
-    review = (await session.execute(stmt)).scalar_one_or_none()
+    review = await _get_review_for_user(session, review_id, user.id)
     if review is None:
         raise HTTPException(status_code=404)
     return templates.TemplateResponse(
