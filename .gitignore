@@ -45,10 +45,8 @@ htmlcov/
 # OS
 .DS_Store
 
-# Claude Code per-developer overrides + tdd-guard runtime
-.claude/settings.local.json
-.claude/tdd-guard/data/test.json
-.claude/tdd-guard/data/modifications.json
+# Claude Code project-local config — per-machine, never commit
+.claude/
 
 # Secrets — never commit
 .env
