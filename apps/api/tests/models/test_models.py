@@ -72,10 +72,10 @@ def test_vocab_item_model_table_and_columns() -> None:
 
 
 def test_review_quality_enum_values() -> None:
-    assert ReviewQuality.AGAIN == 0
-    assert ReviewQuality.HARD == 2
-    assert ReviewQuality.GOOD == 4
-    assert ReviewQuality.EASY == 5
+    assert ReviewQuality.AGAIN.value == 0
+    assert ReviewQuality.HARD.value == 2
+    assert ReviewQuality.GOOD.value == 4
+    assert ReviewQuality.EASY.value == 5
 
 
 def test_review_model_table_and_columns() -> None:
@@ -94,10 +94,35 @@ def test_review_model_table_and_columns() -> None:
         "created_at",
         "updated_at",
     }
-    assert cols["ease_factor"].default.arg == 2.5
-    assert cols["interval_days"].default.arg == 0
-    assert cols["repetitions"].default.arg == 0
-    assert cols["suspended"].default.arg is False
+    for name, expected in [
+        ("ease_factor", 2.5),
+        ("interval_days", 0),
+        ("repetitions", 0),
+        ("suspended", False),
+    ]:
+        col = cols[name]
+        assert col.default is not None, f"{name} expected a Python-side default"
+        assert col.default.arg == expected
+
+
+def test_vocab_item_composite_unique_has_descriptive_name() -> None:
+    uniques = {
+        u.name: tuple(sorted(c.name for c in u.columns))
+        for u in VocabItem.__table__.constraints
+        if u.__class__.__name__ == "UniqueConstraint"
+    }
+    assert uniques.get("uq_vocab_items_token_language") == ("language", "token")
+
+
+def test_vocab_item_language_accepts_full_bcp47_tags() -> None:
+    # BCP 47 tags can be up to 35 chars (e.g., zh-Hant-TW); String(8) truncates them.
+    assert VocabItem.__table__.c.language.type.length >= 35
+
+
+def test_user_email_has_no_redundant_non_unique_index() -> None:
+    email = User.__table__.c.email
+    redundant = [ix for ix in User.__table__.indexes if list(ix.columns) == [email]]
+    assert redundant == [], "email is already covered by unique=True; a separate Index is redundant"
 
 
 def test_timestamp_columns_are_timezone_aware() -> None:
@@ -114,3 +139,12 @@ def test_review_has_unique_user_vocab_pair() -> None:
         if u.__class__.__name__ == "UniqueConstraint"
     ]
     assert ("user_id", "vocab_item_id") in uniques
+
+
+def test_review_composite_unique_has_descriptive_name() -> None:
+    uniques = {
+        u.name: tuple(sorted(c.name for c in u.columns))
+        for u in Review.__table__.constraints
+        if u.__class__.__name__ == "UniqueConstraint"
+    }
+    assert uniques.get("uq_reviews_user_id_vocab_item_id") == ("user_id", "vocab_item_id")

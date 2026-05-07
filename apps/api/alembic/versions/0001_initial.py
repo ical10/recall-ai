@@ -35,18 +35,18 @@ def upgrade() -> None:
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),
+            onupdate=sa.func.now(),
             nullable=False,
         ),
         sa.UniqueConstraint("email", name=op.f("uq_users_email")),
         sa.UniqueConstraint("google_id", name=op.f("uq_users_google_id")),
     )
-    op.create_index(op.f("ix_users_email"), "users", ["email"], unique=False)
 
     op.create_table(
         "vocab_items",
         sa.Column("id", sa.Uuid(), primary_key=True),
         sa.Column("token", sa.String(255), nullable=False),
-        sa.Column("language", sa.String(8), nullable=False),
+        sa.Column("language", sa.String(35), nullable=False),
         sa.Column("part_of_speech", sa.String(32), nullable=True),
         sa.Column("definition", sa.Text(), nullable=False),
         sa.Column("example_sentence", sa.Text(), nullable=True),
@@ -61,9 +61,10 @@ def upgrade() -> None:
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),
+            onupdate=sa.func.now(),
             nullable=False,
         ),
-        sa.UniqueConstraint("token", "language", name=op.f("uq_vocab_items_token")),
+        sa.UniqueConstraint("token", "language", name="uq_vocab_items_token_language"),
     )
 
     op.create_table(
@@ -87,6 +88,7 @@ def upgrade() -> None:
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),
+            onupdate=sa.func.now(),
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
@@ -101,7 +103,7 @@ def upgrade() -> None:
             name=op.f("fk_reviews_vocab_item_id_vocab_items"),
             ondelete="CASCADE",
         ),
-        sa.UniqueConstraint("user_id", "vocab_item_id", name=op.f("uq_reviews_user_id")),
+        sa.UniqueConstraint("user_id", "vocab_item_id", name="uq_reviews_user_id_vocab_item_id"),
     )
     op.create_index(op.f("ix_reviews_user_id"), "reviews", ["user_id"], unique=False)
     op.create_index(op.f("ix_reviews_vocab_item_id"), "reviews", ["vocab_item_id"], unique=False)

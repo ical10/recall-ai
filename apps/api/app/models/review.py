@@ -17,7 +17,9 @@ class ReviewQuality(enum.IntEnum):
 
 class Review(Base, TimestampMixin):
     __tablename__ = "reviews"
-    __table_args__ = (UniqueConstraint("user_id", "vocab_item_id"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "vocab_item_id", name="uq_reviews_user_id_vocab_item_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
