@@ -23,6 +23,7 @@ dev = [
     "tdd-guard-pytest>=0.1",
     "ruff>=0.7",
     "mypy>=1.13",
+    "aiosqlite>=0.20",
 ]
 
 [tool.pytest.ini_options]
