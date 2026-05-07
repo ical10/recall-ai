@@ -62,6 +62,23 @@ async def review_page(
     )
 
 
+@router.get("/review/{review_id}/reveal")
+async def review_reveal(
+    review_id: UUID,
+    request: Request,
+    session: SessionDep,
+    user: UserDep,
+) -> Response:
+    review = await _get_review_for_user(session, review_id, user.id)
+    if review is None:
+        raise HTTPException(status_code=404)
+    return templates.TemplateResponse(
+        request,
+        "partials/rating.html",
+        {"review": review, "vocab": review.vocab_item},
+    )
+
+
 @router.post("/review/{review_id}/rate")
 async def review_rate(
     review_id: UUID,
@@ -100,21 +117,4 @@ async def review_rate(
         request,
         "partials/card.html",
         {"review": next_review, "vocab": next_review.vocab_item},
-    )
-
-
-@router.get("/review/{review_id}/reveal")
-async def review_reveal(
-    review_id: UUID,
-    request: Request,
-    session: SessionDep,
-    user: UserDep,
-) -> Response:
-    review = await _get_review_for_user(session, review_id, user.id)
-    if review is None:
-        raise HTTPException(status_code=404)
-    return templates.TemplateResponse(
-        request,
-        "partials/rating.html",
-        {"review": review, "vocab": review.vocab_item},
     )
