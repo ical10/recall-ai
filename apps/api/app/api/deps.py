@@ -39,3 +39,6 @@ async def get_current_user(session: SessionDep) -> User:
         return (await session.execute(stmt)).scalar_one()
     await session.refresh(user)
     return user
+
+
+CurrentUserDep = Annotated[User, Depends(get_current_user)]

@@ -130,6 +130,68 @@ def test_seed_vocab_creates_due_reviews_when_flag_set(
     _run(session_factory, assertions)
 
 
+def test_seed_vocab_prints_summary(
+    tmp_path: Path,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    seed_path = tmp_path / "seed.json"
+    seed_path.write_text(
+        json.dumps([{"token": "p", "language": "en"}, {"token": "q", "language": "en"}])
+    )
+
+    _invoke(session_factory, monkeypatch, [str(seed_path)])
+
+    captured = capsys.readouterr()
+    assert "seeded 2 vocab items" in captured.out
+    assert "0 reviews" in captured.out
+
+
+def test_seed_vocab_errors_when_json_is_not_a_list(
+    tmp_path: Path,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seed_path = tmp_path / "seed.json"
+    seed_path.write_text(json.dumps({"token": "a", "language": "en"}))
+
+    with pytest.raises(SystemExit):
+        _invoke(session_factory, monkeypatch, [str(seed_path)])
+
+
+def test_seed_vocab_skips_existing_reviews_on_rerun(
+    tmp_path: Path,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def seed_user(session: AsyncSession) -> None:
+        session.add(User(email="dev@local", google_id="dev-local", name="Dev"))
+        await session.commit()
+
+    _run(session_factory, seed_user)
+
+    seed_path = tmp_path / "seed.json"
+    seed_path.write_text(json.dumps([{"token": "x", "language": "en"}]))
+
+    _invoke(
+        session_factory,
+        monkeypatch,
+        [str(seed_path), "--create-reviews-for", "dev@local"],
+    )
+    _invoke(
+        session_factory,
+        monkeypatch,
+        [str(seed_path), "--create-reviews-for", "dev@local"],
+    )
+
+    async def assertions(session: AsyncSession) -> None:
+        reviews = (await session.execute(select(Review))).scalars().all()
+        assert len(reviews) == 1
+
+    _run(session_factory, assertions)
+
+
 def test_seed_vocab_errors_when_user_not_found(
     tmp_path: Path,
     session_factory: async_sessionmaker[AsyncSession],

@@ -1,24 +1,17 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, HTTPException, Query, Response
 from sqlalchemy import delete, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
-from app.core.db import get_session
+from app.api.deps import CurrentUserDep, SessionDep
 from app.models.review import Review
-from app.models.user import User
 from app.models.vocab_item import VocabItem
 from app.schemas.vocab import VocabCreate, VocabListResponse, VocabRead
 
 router = APIRouter()
-
-SessionDep = Annotated[AsyncSession, Depends(get_session)]
-CurrentUserDep = Annotated[User, Depends(get_current_user)]
 
 
 @router.get("/vocab", response_model=VocabListResponse)

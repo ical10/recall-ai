@@ -35,13 +35,17 @@ def _read_rows(path: Path, *, csv_mode: bool) -> list[dict[str, str]]:
     text = path.read_text(encoding="utf-8")
     if csv_mode:
         return list(csv.DictReader(text.splitlines()))
-    return list(json.loads(text))
+    data = json.loads(text)
+    if not isinstance(data, list):
+        raise SystemExit("seed JSON must be a list of {token, language} objects")
+    return data
 
 
 async def main(session_factory: async_sessionmaker | None = None) -> None:
     args = _parse_args(sys.argv[1:])
     rows = _read_rows(args.path, csv_mode=args.csv)
     factory = session_factory or SessionLocal
+    reviews_created = 0
     async with factory() as session:
         items: list[VocabItem] = []
         for row in rows:
@@ -73,9 +77,22 @@ async def main(session_factory: async_sessionmaker | None = None) -> None:
                 raise SystemExit(f"user with email {args.create_reviews_for!r} not found")
             now = datetime.now(UTC)
             for item in items:
+                existing_review = (
+                    await session.execute(
+                        select(Review).where(
+                            Review.user_id == user.id,
+                            Review.vocab_item_id == item.id,
+                        )
+                    )
+                ).scalar_one_or_none()
+                if existing_review is not None:
+                    continue
                 session.add(Review(user_id=user.id, vocab_item_id=item.id, due_at=now))
+                reviews_created += 1
 
         await session.commit()
+
+    print(f"seeded {len(items)} vocab items; created {reviews_created} reviews")
 
 
 if __name__ == "__main__":
