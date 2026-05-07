@@ -49,13 +49,12 @@
 - lint + types: `pnpm lint` runs ruff check + ruff format check + mypy strict on `apps/api/app`.
 
 ### railway
-- one repo, three services. each service points at this repo and overrides the start command in the railway dashboard:
-  - **web**: leave default — `railway.json` already specifies the uvicorn command + `/healthz` healthcheck.
-  - **worker**: start command `uv run --project . celery -A app.core.celery_app:celery_app --workdir apps/api worker --loglevel=info`
-  - **beat**: start command `uv run --project . celery -A app.core.celery_app:celery_app --workdir apps/api beat --loglevel=info`
-- nixpacks build is configured in `nixpacks.toml`: installs python 3.11 + uv, runs `uv sync --frozen --no-dev`. all three services share the same image — only the start command differs.
-- required env vars: `DATABASE_URL`, `REDIS_URL`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `SECRET_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`. **no code-side defaults for the LLM trio** — `.env` (dev) and railway env (prod) are the single source of truth, so a missing var fails loudly at startup instead of silently picking a dev model in prod. swap providers by setting the three `LLM_*` vars together (e.g. dev → OpenRouter + `z-ai/glm-4.5-air:free`; prod → OpenRouter + `deepseek/deepseek-v4-flash` or OpenCode Go's `https://opencode.ai/zen/go/v1` + `deepseek-v4-flash`). railway's postgres + redis addons inject `DATABASE_URL` and `REDIS_URL` automatically when attached.
-- tailwind play cdn is fine for early deploys; precompile to `apps/api/static/css/` before going public (separate plan).
+- one repo, three services. each service uses its own nixpacks config so worker/beat skip the Node + Tailwind build (faster deploys, smaller images). The start command lives in each nixpacks file — no dashboard override needed.
+  - **web**: default `nixpacks.toml` — installs python + uv + nodejs + pnpm, runs `pnpm install --frozen-lockfile`, `uv sync`, then `pnpm run build:css:prod` to compile Tailwind. Start: uvicorn. `/healthz` healthcheck via `railway.json`.
+  - **worker**: set `NIXPACKS_CONFIG_FILE=nixpacks.worker.toml` in the service's variables — installs python + uv only. Start: celery worker.
+  - **beat**: set `NIXPACKS_CONFIG_FILE=nixpacks.beat.toml` — same as worker. Start: celery beat.
+- required env vars (all services): `DATABASE_URL`, `REDIS_URL`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `SECRET_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`. **no code-side defaults for the LLM trio** — `.env` (dev) and railway env (prod) are the single source of truth, so a missing var fails loudly at startup instead of silently picking a dev model in prod. swap providers by setting the three `LLM_*` vars together (e.g. dev → OpenRouter + `z-ai/glm-4.5-air:free`; prod → OpenRouter + `deepseek/deepseek-v4-flash` or OpenCode Go's `https://opencode.ai/zen/go/v1` + `deepseek-v4-flash`). railway's postgres + redis addons inject `DATABASE_URL` and `REDIS_URL` automatically when attached.
+- tailwind compiles to `apps/api/static/css/output.css` during the web service build phase; the file is gitignored. served at `/static/css/output.css` with `Cache-Control: public, max-age=300`.
 
 ## conventions
 - all api endpoints async; all celery tasks sync (celery 5 limitation — do not use async def in tasks)
