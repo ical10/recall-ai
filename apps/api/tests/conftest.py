@@ -3,7 +3,9 @@ from collections.abc import Iterator
 
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test:test@localhost:5432/test")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("OPENROUTER_API_KEY", "test-key")
+os.environ.setdefault("LLM_API_KEY", "test-key")
+os.environ.setdefault("LLM_BASE_URL", "https://test.invalid/v1")
+os.environ.setdefault("LLM_MODEL", "test/test-model")
 os.environ.setdefault("SECRET_KEY", "test-secret")
 
 import pytest
