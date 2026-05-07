@@ -161,10 +161,10 @@ def test_llm_client_defaults_to_openai_constructed_from_settings(
     fake_settings = Settings(
         database_url="x",
         redis_url="x",
-        openrouter_api_key="sk-test-real",
+        llm_api_key="sk-test-real",
         secret_key="x",
         llm_model="some/model:free",
-        openrouter_base_url="https://example.test/api/v1",
+        llm_base_url="https://example.test/api/v1",
     )
     monkeypatch.setattr(llm_module, "get_settings", lambda: fake_settings)
 

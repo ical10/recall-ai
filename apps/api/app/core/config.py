@@ -8,10 +8,10 @@ class Settings(BaseSettings):
 
     database_url: str
     redis_url: str
-    openrouter_api_key: str
+    llm_api_key: str
     secret_key: str
     llm_model: str = "z-ai/glm-4.5-air:free"
-    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    llm_base_url: str = "https://openrouter.ai/api/v1"
     google_client_id: str = ""
     google_client_secret: str = ""
 

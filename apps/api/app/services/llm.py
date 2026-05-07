@@ -30,8 +30,8 @@ class LLMClient:
     ) -> None:
         settings = get_settings()
         self._client = openai_client or OpenAI(
-            base_url=settings.openrouter_base_url,
-            api_key=settings.openrouter_api_key,
+            base_url=settings.llm_base_url,
+            api_key=settings.llm_api_key,
         )
         self._model = model or settings.llm_model
         self._timeout_s = timeout_s
