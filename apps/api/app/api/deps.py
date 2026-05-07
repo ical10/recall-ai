@@ -4,6 +4,7 @@ from typing import Annotated
 from fastapi import Depends
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
@@ -31,6 +32,10 @@ async def get_current_user(session: SessionDep) -> User:
         name=DEV_USER_NAME,
     )
     session.add(user)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        return (await session.execute(stmt)).scalar_one()
     await session.refresh(user)
     return user
