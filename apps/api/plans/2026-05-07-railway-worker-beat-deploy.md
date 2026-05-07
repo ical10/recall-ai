@@ -23,7 +23,7 @@ Per-service nixpacks files (`nixpacks.worker.toml`, `nixpacks.beat.toml`) skip t
 - [ ] Logs show `[INFO/Beat] beat: Starting...`
 
 ## Verify
-- [ ] From local: `REDIS_URL='<prod>' uv run --project . celery -A app.core.celery_app:celery_app --workdir apps/api inspect ping` → expect `pong`
+- [ ] From local, with prod `REDIS_URL` injected via Railway CLI (`railway link`, then `railway run -s worker -- uv run --project . celery -A app.core.celery_app:celery_app --workdir apps/api inspect ping`) or sourced from a gitignored `.env.prod` — never paste the URL inline (leaks to shell history). Expect `pong`.
 - [ ] Worker/beat build durations noticeably shorter than web
 
 ## If it breaks
