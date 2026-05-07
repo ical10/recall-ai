@@ -1,4 +1,5 @@
 import inspect as stdlib_inspect
+from typing import Any
 
 from sqlalchemy.inspection import inspect
 
@@ -21,24 +22,17 @@ def test_next_due_review_helper_exists() -> None:
     )
 
 
-def test_next_due_review_returns_due_review() -> None:
+def test_next_due_review_returns_due_review(in_memory_session_factory: Any) -> None:
     import asyncio
-    from datetime import datetime, timezone
-
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from datetime import UTC, datetime
 
     from app.api.reviews import _next_due_review
-    from app.models import Base
     from app.models.review import Review
     from app.models.user import User
     from app.models.vocab_item import VocabItem
 
     async def run() -> None:
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
-        factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
-
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        factory = in_memory_session_factory
 
         async with factory() as session:
             user = User(email="test@example.com", google_id="gid-1", name="Test")
@@ -53,11 +47,11 @@ def test_next_due_review_returns_due_review() -> None:
             session.add(vocab)
             await session.flush()
 
-            now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)  # noqa: UP017
+            now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
             review = Review(
                 user_id=user.id,
                 vocab_item_id=vocab.id,
-                due_at=datetime(2026, 1, 1, 11, 0, 0, tzinfo=timezone.utc),  # noqa: UP017
+                due_at=datetime(2026, 1, 1, 11, 0, 0, tzinfo=UTC),
             )
             session.add(review)
             await session.commit()
@@ -66,7 +60,5 @@ def test_next_due_review_returns_due_review() -> None:
             result = await _next_due_review(session, user.id, now)
             assert result is not None, "_next_due_review returned None for a due review"
             assert result.id == review.id
-
-        await engine.dispose()
 
     asyncio.run(run())

@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -72,3 +73,21 @@ def probe_app(tmp_path: Path) -> Iterator[FastAPI]:
 def probe_client(probe_app: FastAPI) -> Iterator[TestClient]:
     with TestClient(probe_app) as client:
         yield client
+
+
+@pytest.fixture
+def in_memory_session_factory() -> Iterator[async_sessionmaker[AsyncSession]]:
+    from app.models import Base
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+    async def _setup() -> None:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    asyncio.run(_setup())
+    try:
+        yield factory
+    finally:
+        asyncio.run(engine.dispose())
