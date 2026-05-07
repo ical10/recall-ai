@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import logging
 
-from celery import Task
-
 from app.core.celery_app import celery_app
 from app.core.db_sync import SyncSessionLocal
 from app.services.enrichment import enrich_vocab_item
@@ -13,8 +11,8 @@ from app.services.selection import select_unenriched
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name="content_gen.run_daily", bind=True, max_retries=3)  # type: ignore[untyped-decorator]
-def run_daily(self: Task, batch_size: int = 25) -> dict[str, int]:
+@celery_app.task(name="content_gen.run_daily")  # type: ignore[untyped-decorator]
+def run_daily(batch_size: int = 25) -> dict[str, int]:
     succeeded = 0
     failed = 0
     with SyncSessionLocal() as session:
