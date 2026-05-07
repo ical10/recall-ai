@@ -37,8 +37,8 @@ For each review, given current `(ease_factor: float, interval_days: int, repetit
    - `repetitions += 1`
    - First success: `interval_days = 1`
    - Second success: `interval_days = 6`
-   - Subsequent: `interval_days = round(previous_interval_days * ease_factor)`
-   - `ease_factor` increases per the same formula above (no floor needed when q≥3 because the delta is non-negative)
+   - `ease_factor` is updated first per the formula above (the implementation clamps at 1.3 unconditionally; in this project's enum the success branch only ever sees q∈{GOOD=4, EASY=5} where delta≥0, but standard SM-2 q=3 produces a negative delta so the floor still matters in principle)
+   - Subsequent: `interval_days = round(previous_interval_days * new_ease_factor)` — canonical SM-2 multiplies by the *post-update* ease (Wozniak), not the pre-update ease (Anki's variant)
 
 The `due_at` is `now + timedelta(days=interval_days)` — but `compute_next_review` returns the updates as data; the caller decides when to apply `now`.
 
@@ -231,7 +231,8 @@ def test_subsequent_success_continues_to_multiply() -> None:
     state = ReviewState(ease_factor=2.6, interval_days=15, repetitions=3)
     update = compute_next_review(state, ReviewQuality.EASY)
     assert update.repetitions == 4
-    assert update.interval_days == 39  # round(15 * 2.6) = 39
+    # EASY (q=5): delta=0.1, new_ease=2.7; round(15 * 2.7) = round(40.5) = 40 (banker's)
+    assert update.interval_days == 40
 
 
 def test_good_quality_increases_ease_factor() -> None:
