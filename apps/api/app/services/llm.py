@@ -31,7 +31,7 @@ class LLMClient:
         settings = get_settings()
         self._client = openai_client or OpenAI(
             base_url=settings.llm_base_url,
-            api_key=settings.llm_api_key,
+            api_key=settings.llm_api_key.get_secret_value(),
         )
         self._model = model or settings.llm_model
         self._timeout_s = timeout_s
@@ -42,7 +42,7 @@ class LLMClient:
 
         for attempt in range(1, max_retries + 1):
             completion = self._client.chat.completions.create(
-                model=self._model or "",
+                model=self._model,
                 messages=messages,
                 response_format={"type": "json_object"},
                 timeout=self._timeout_s,

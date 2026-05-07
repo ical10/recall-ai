@@ -1,3 +1,5 @@
+import re
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -12,6 +14,7 @@ class SimpleVocabExample(LLMOutput):
 
     @model_validator(mode="after")
     def _example_must_contain_token(self) -> "SimpleVocabExample":
-        if self.token.lower() not in self.example.lower():
+        pattern = rf"\b{re.escape(self.token)}\b"
+        if not re.search(pattern, self.example, flags=re.IGNORECASE):
             raise ValueError("example sentence must contain the target token")
         return self

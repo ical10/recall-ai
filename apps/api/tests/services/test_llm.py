@@ -62,6 +62,16 @@ def test_simple_vocab_example_rejects_example_missing_token() -> None:
         )
 
 
+def test_simple_vocab_example_rejects_token_appearing_only_as_substring() -> None:
+    # `cat` should not be considered "in" `concatenation` — must match as a whole word.
+    with pytest.raises(ValidationError):
+        SimpleVocabExample(
+            token="cat",
+            definition="A small domesticated carnivorous mammal.",
+            example="String concatenation is a common operation.",
+        )
+
+
 def test_complete_returns_validated_pydantic_object_on_first_try() -> None:
     fake_openai = MagicMock()
     fake_openai.chat.completions.create.return_value = _fake_completion(
@@ -106,7 +116,9 @@ def test_complete_logs_token_usage(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.INFO, logger="app.services.llm"):
         client.complete("Define ephemeral.", SimpleVocabExample)
 
-    log_records = [r for r in caplog.records if r.levelname == "INFO"]
+    log_records = [
+        r for r in caplog.records if r.name == "app.services.llm" and r.levelname == "INFO"
+    ]
     assert any(
         getattr(r, "prompt_tokens", None) == 123 and getattr(r, "completion_tokens", None) == 45
         for r in log_records
@@ -196,5 +208,9 @@ def test_complete_logs_attempt_number_on_each_call(caplog: pytest.LogCaptureFixt
     ):
         client.complete("Define x.", SimpleVocabExample, max_retries=3)
 
-    attempts = [getattr(r, "attempt", None) for r in caplog.records if r.levelname == "INFO"]
+    attempts = [
+        getattr(r, "attempt", None)
+        for r in caplog.records
+        if r.name == "app.services.llm" and r.levelname == "INFO"
+    ]
     assert attempts == [1, 2, 3]
