@@ -1,6 +1,12 @@
+import asyncio
 import inspect as stdlib_inspect
+from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.inspection import inspect
 
 
@@ -23,7 +29,6 @@ def test_next_due_review_helper_exists() -> None:
 
 
 def test_next_due_review_returns_due_review(in_memory_session_factory: Any) -> None:
-    import asyncio
     from datetime import UTC, datetime
 
     from app.api.reviews import _next_due_review
@@ -62,3 +67,270 @@ def test_next_due_review_returns_due_review(in_memory_session_factory: Any) -> N
             assert result.id == review.id
 
     asyncio.run(run())
+
+
+# ---------------------------------------------------------------------------
+# Fixtures for GET /review endpoint tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def reviews_app(
+    in_memory_session_factory: async_sessionmaker[AsyncSession],
+) -> Iterator[FastAPI]:
+    from sqlalchemy import select
+
+    from app.api.deps import get_current_user
+    from app.api.reviews import router as reviews_router
+    from app.core.db import get_session
+    from app.models.user import User
+
+    async def override_get_session() -> AsyncIterator[AsyncSession]:
+        async with in_memory_session_factory() as session:
+            yield session
+
+    async def override_get_current_user() -> User:
+        async with in_memory_session_factory() as session:
+            result = await session.execute(select(User).where(User.email == "reviewer@test.com"))
+            existing = result.scalar_one_or_none()
+            if existing is not None:
+                return existing
+            new_user = User(
+                email="reviewer@test.com",
+                google_id="gid-rev",
+                name="Reviewer",
+            )
+            session.add(new_user)
+            await session.commit()
+            result2 = await session.execute(select(User).where(User.email == "reviewer@test.com"))
+            return result2.scalar_one()
+
+    app = FastAPI()
+    app.include_router(reviews_router)
+    app.dependency_overrides[get_session] = override_get_session
+    app.dependency_overrides[get_current_user] = override_get_current_user
+
+    yield app
+
+
+@pytest.fixture
+def reviews_client(reviews_app: FastAPI) -> Iterator[TestClient]:
+    with TestClient(reviews_app, raise_server_exceptions=True) as client:
+        yield client
+
+
+# ---------------------------------------------------------------------------
+# Test 1: no due reviews → done partial
+# ---------------------------------------------------------------------------
+
+
+def test_get_review_renders_done_when_no_due_reviews(
+    reviews_client: TestClient,
+    in_memory_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from app.models.user import User
+
+    async def seed() -> None:
+        from sqlalchemy import select
+
+        async with in_memory_session_factory() as session:
+            result = await session.execute(select(User).where(User.email == "reviewer@test.com"))
+            if result.scalar_one_or_none() is None:
+                session.add(User(email="reviewer@test.com", google_id="gid-rev", name="Reviewer"))
+                await session.commit()
+
+    asyncio.run(seed())
+
+    resp = reviews_client.get("/review")
+    assert resp.status_code == 200
+    assert "All caught up" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Test 2: oldest due card is shown first
+# ---------------------------------------------------------------------------
+
+
+def test_get_review_returns_oldest_due_card_for_user(
+    reviews_client: TestClient,
+    in_memory_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from datetime import UTC, datetime
+
+    from app.models.review import Review
+    from app.models.user import User
+    from app.models.vocab_item import VocabItem
+
+    async def seed() -> None:
+        from sqlalchemy import select
+
+        async with in_memory_session_factory() as session:
+            result = await session.execute(select(User).where(User.email == "reviewer@test.com"))
+            user = result.scalar_one_or_none()
+            if user is None:
+                user = User(email="reviewer@test.com", google_id="gid-rev", name="Reviewer")
+                session.add(user)
+                await session.flush()
+
+            vocab_older = VocabItem(token="older-word", language="en", definition="older def")
+            vocab_newer = VocabItem(token="newer-word", language="en", definition="newer def")
+            session.add(vocab_older)
+            session.add(vocab_newer)
+            await session.flush()
+
+            session.add(
+                Review(
+                    user_id=user.id,
+                    vocab_item_id=vocab_older.id,
+                    due_at=datetime(2026, 1, 1, 9, 0, 0, tzinfo=UTC),
+                )
+            )
+            session.add(
+                Review(
+                    user_id=user.id,
+                    vocab_item_id=vocab_newer.id,
+                    due_at=datetime(2026, 1, 1, 11, 0, 0, tzinfo=UTC),
+                )
+            )
+            await session.commit()
+
+    asyncio.run(seed())
+
+    resp = reviews_client.get("/review")
+    assert resp.status_code == 200
+    assert "older-word" in resp.text
+    assert "newer-word" not in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Test 3: suspended reviews are excluded
+# ---------------------------------------------------------------------------
+
+
+def test_get_review_excludes_suspended_reviews(
+    reviews_client: TestClient,
+    in_memory_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from datetime import UTC, datetime
+
+    from app.models.review import Review
+    from app.models.user import User
+    from app.models.vocab_item import VocabItem
+
+    async def seed() -> None:
+        from sqlalchemy import select
+
+        async with in_memory_session_factory() as session:
+            result = await session.execute(select(User).where(User.email == "reviewer@test.com"))
+            user = result.scalar_one_or_none()
+            if user is None:
+                user = User(email="reviewer@test.com", google_id="gid-rev", name="Reviewer")
+                session.add(user)
+                await session.flush()
+
+            vocab = VocabItem(token="suspended-word", language="en", definition="def")
+            session.add(vocab)
+            await session.flush()
+
+            session.add(
+                Review(
+                    user_id=user.id,
+                    vocab_item_id=vocab.id,
+                    due_at=datetime(2026, 1, 1, 9, 0, 0, tzinfo=UTC),
+                    suspended=True,
+                )
+            )
+            await session.commit()
+
+    asyncio.run(seed())
+
+    resp = reviews_client.get("/review")
+    assert resp.status_code == 200
+    assert "All caught up" in resp.text
+    assert "suspended-word" not in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Test 4: reviews belonging to a different user are not shown
+# ---------------------------------------------------------------------------
+
+
+def test_get_review_excludes_other_users_reviews(
+    reviews_client: TestClient,
+    in_memory_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from datetime import UTC, datetime
+
+    from app.models.review import Review
+    from app.models.user import User
+    from app.models.vocab_item import VocabItem
+
+    async def seed() -> None:
+        async with in_memory_session_factory() as session:
+            other_user = User(email="other@test.com", google_id="gid-other", name="Other")
+            session.add(other_user)
+            await session.flush()
+
+            vocab = VocabItem(token="other-word", language="en", definition="def")
+            session.add(vocab)
+            await session.flush()
+
+            session.add(
+                Review(
+                    user_id=other_user.id,
+                    vocab_item_id=vocab.id,
+                    due_at=datetime(2026, 1, 1, 9, 0, 0, tzinfo=UTC),
+                )
+            )
+            await session.commit()
+
+    asyncio.run(seed())
+
+    resp = reviews_client.get("/review")
+    assert resp.status_code == 200
+    assert "All caught up" in resp.text
+    assert "other-word" not in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Test 5: null due_at is treated as immediately due
+# ---------------------------------------------------------------------------
+
+
+def test_get_review_treats_null_due_at_as_due(
+    reviews_client: TestClient,
+    in_memory_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from app.models.review import Review
+    from app.models.user import User
+    from app.models.vocab_item import VocabItem
+
+    async def seed() -> None:
+        from sqlalchemy import select
+
+        async with in_memory_session_factory() as session:
+            result = await session.execute(select(User).where(User.email == "reviewer@test.com"))
+            user = result.scalar_one_or_none()
+            if user is None:
+                user = User(email="reviewer@test.com", google_id="gid-rev", name="Reviewer")
+                session.add(user)
+                await session.flush()
+
+            vocab = VocabItem(token="null-due-word", language="en", definition="def")
+            session.add(vocab)
+            await session.flush()
+
+            session.add(
+                Review(
+                    user_id=user.id,
+                    vocab_item_id=vocab.id,
+                    due_at=None,
+                )
+            )
+            await session.commit()
+
+    asyncio.run(seed())
+
+    resp = reviews_client.get("/review")
+    assert resp.status_code == 200
+    assert "null-due-word" in resp.text
