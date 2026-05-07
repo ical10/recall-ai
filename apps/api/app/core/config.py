@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     redis_url: str
     openrouter_api_key: str
     secret_key: str
-    llm_model: str = "meta-llama/llama-3.3-70b-instruct:free"
+    llm_model: str = "z-ai/glm-4.5-air:free"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     google_client_id: str = ""
     google_client_secret: str = ""

@@ -20,7 +20,7 @@ def test_settings_loads_required_fields_from_env(monkeypatch):
     assert settings.redis_url == "redis://h:6379/0"
     assert settings.openrouter_api_key == "k"
     assert settings.secret_key == "s"
-    assert settings.llm_model == "meta-llama/llama-3.3-70b-instruct:free"
+    assert settings.llm_model == "z-ai/glm-4.5-air:free"
     assert settings.openrouter_base_url == "https://openrouter.ai/api/v1"
     assert settings.google_client_id == ""
     assert settings.google_client_secret == ""
