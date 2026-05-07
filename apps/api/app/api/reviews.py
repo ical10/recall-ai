@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,5 +43,27 @@ async def review_page(
     return templates.TemplateResponse(
         request,
         "pages/review.html",
+        {"review": review, "vocab": review.vocab_item},
+    )
+
+
+@router.get("/review/{review_id}/reveal")
+async def review_reveal(
+    review_id: UUID,
+    request: Request,
+    session: SessionDep,
+    user: UserDep,
+) -> Response:
+    stmt = (
+        select(Review)
+        .options(joinedload(Review.vocab_item))
+        .where(Review.id == review_id, Review.user_id == user.id)
+    )
+    review = (await session.execute(stmt)).scalar_one_or_none()
+    if review is None:
+        raise HTTPException(status_code=404)
+    return templates.TemplateResponse(
+        request,
+        "partials/rating.html",
         {"review": review, "vocab": review.vocab_item},
     )

@@ -293,6 +293,100 @@ def test_get_review_excludes_other_users_reviews(
 
 
 # ---------------------------------------------------------------------------
+# Tests for GET /review/{id}/reveal
+# ---------------------------------------------------------------------------
+
+
+def test_reveal_returns_partial_with_definition(
+    reviews_client: TestClient,
+    in_memory_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from app.models.review import Review
+    from app.models.user import User
+    from app.models.vocab_item import VocabItem
+
+    review_id: Any = None
+
+    async def seed() -> None:
+        nonlocal review_id
+        from sqlalchemy import select
+
+        async with in_memory_session_factory() as session:
+            result = await session.execute(select(User).where(User.email == "reviewer@test.com"))
+            user = result.scalar_one_or_none()
+            if user is None:
+                user = User(email="reviewer@test.com", google_id="gid-rev", name="Reviewer")
+                session.add(user)
+                await session.flush()
+
+            vocab = VocabItem(
+                token="banana",
+                language="en",
+                definition="a yellow fruit",
+                example_sentence="I eat a banana every morning.",
+            )
+            session.add(vocab)
+            await session.flush()
+
+            review = Review(user_id=user.id, vocab_item_id=vocab.id)
+            session.add(review)
+            await session.commit()
+            review_id = review.id
+
+    asyncio.run(seed())
+
+    resp = reviews_client.get(f"/review/{review_id}/reveal")
+    assert resp.status_code == 200
+    assert "a yellow fruit" in resp.text
+    assert "Again" in resp.text
+    assert "Hard" in resp.text
+    assert "Good" in resp.text
+    assert "Easy" in resp.text
+
+
+def test_reveal_404_when_not_owner(
+    reviews_client: TestClient,
+    in_memory_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from app.models.review import Review
+    from app.models.user import User
+    from app.models.vocab_item import VocabItem
+
+    review_id: Any = None
+
+    async def seed() -> None:
+        nonlocal review_id
+        async with in_memory_session_factory() as session:
+            other_user = User(email="other2@test.com", google_id="gid-other2", name="Other2")
+            session.add(other_user)
+            await session.flush()
+
+            vocab = VocabItem(token="cherry", language="en", definition="a red fruit")
+            session.add(vocab)
+            await session.flush()
+
+            review = Review(user_id=other_user.id, vocab_item_id=vocab.id)
+            session.add(review)
+            await session.commit()
+            review_id = review.id
+
+    asyncio.run(seed())
+
+    resp = reviews_client.get(f"/review/{review_id}/reveal")
+    assert resp.status_code == 404
+
+
+def test_reveal_404_when_not_found(
+    reviews_client: TestClient,
+) -> None:
+    import uuid
+
+    random_id = uuid.uuid4()
+    resp = reviews_client.get(f"/review/{random_id}/reveal")
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # Test 5: null due_at is treated as immediately due
 # ---------------------------------------------------------------------------
 
