@@ -5,6 +5,7 @@ from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
 from pydantic import ValidationError
 
+from app.core.config import get_settings
 from app.schemas.llm import LLMOutput
 
 T = TypeVar("T", bound=LLMOutput)
@@ -27,12 +28,15 @@ class LLMClient:
         model: str | None = None,
         timeout_s: float = 30.0,
     ) -> None:
-        self._client = openai_client
-        self._model = model
+        settings = get_settings()
+        self._client = openai_client or OpenAI(
+            base_url=settings.openrouter_base_url,
+            api_key=settings.openrouter_api_key,
+        )
+        self._model = model or settings.llm_model
         self._timeout_s = timeout_s
 
     def complete(self, prompt: str, response_schema: type[T], max_retries: int = 3) -> T:
-        assert self._client is not None
         messages: list[ChatCompletionMessageParam] = [{"role": "user", "content": prompt}]
         last_error: ValidationError | None = None
 

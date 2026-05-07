@@ -152,6 +152,37 @@ def test_complete_raises_after_max_retries_exhausted() -> None:
     assert fake_openai.chat.completions.create.call_count == 3
 
 
+def test_llm_client_defaults_to_openai_constructed_from_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+    from app.services import llm as llm_module
+
+    fake_settings = Settings(
+        database_url="x",
+        redis_url="x",
+        openrouter_api_key="sk-test-real",
+        secret_key="x",
+        llm_model="some/model:free",
+        openrouter_base_url="https://example.test/api/v1",
+    )
+    monkeypatch.setattr(llm_module, "get_settings", lambda: fake_settings)
+
+    captured: dict[str, object] = {}
+
+    class FakeOpenAI:
+        def __init__(self, *, base_url: str, api_key: str) -> None:
+            captured["base_url"] = base_url
+            captured["api_key"] = api_key
+
+    monkeypatch.setattr(llm_module, "OpenAI", FakeOpenAI)
+
+    client = LLMClient()
+
+    assert captured == {"base_url": "https://example.test/api/v1", "api_key": "sk-test-real"}
+    assert client._model == "some/model:free"
+
+
 def test_complete_logs_attempt_number_on_each_call(caplog: pytest.LogCaptureFixture) -> None:
     import logging
 
