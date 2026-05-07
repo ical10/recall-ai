@@ -71,6 +71,20 @@ def test_get_current_user_recovers_when_concurrent_insert_wins_race() -> None:
     session.rollback.assert_awaited_once()
 
 
+def test_user_dep_aliases_get_current_user() -> None:
+    from typing import get_args
+
+    from fastapi import Depends
+
+    from app.api.deps import UserDep, get_current_user
+    from app.models.user import User
+
+    args = get_args(UserDep)
+    assert args[0] is User
+    dep_type = type(Depends(get_current_user))
+    assert any(isinstance(arg, dep_type) and arg.dependency is get_current_user for arg in args[1:])
+
+
 def test_templates_points_to_apps_api_templates_directory() -> None:
     from pathlib import Path
 
