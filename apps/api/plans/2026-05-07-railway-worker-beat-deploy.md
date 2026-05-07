@@ -13,7 +13,7 @@ Per-service nixpacks files (`nixpacks.worker.toml`, `nixpacks.beat.toml`) skip t
   - `NIXPACKS_CONFIG_FILE=nixpacks.worker.toml`
   - `DATABASE_URL=${{ Postgres.DATABASE_URL }}`
   - `REDIS_URL=${{ Redis.REDIS_URL }}`
-  - `OPENROUTER_API_KEY`, `SECRET_KEY` (and `LLM_MODEL` if overriding)
+  - `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `SECRET_KEY`
 - [ ] Settings → clear Healthcheck Path AND Custom Start Command (both must be empty so the nixpacks file wins)
 - [ ] Deploy. Build log shows: no `nodejs_22`, no `pnpm install`, no build phase. Start runs `... celery ... worker`.
 - [ ] Logs show Celery banner + registered tasks
@@ -28,7 +28,7 @@ Per-service nixpacks files (`nixpacks.worker.toml`, `nixpacks.beat.toml`) skip t
 
 ## If it breaks
 - Build still pulls Node → `NIXPACKS_CONFIG_FILE` not honored. Try `NIXPACKS_CONFIG` instead, or fall back: delete the var, use "Custom Start Command" in Settings to force the celery command.
-- Worker crashes at boot → missing `DATABASE_URL` / `REDIS_URL` / `OPENROUTER_API_KEY`
+- Worker crashes at boot → missing `DATABASE_URL` / `REDIS_URL` / `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`
 - Tasks firing twice → beat replicas > 1
 - Beat schedule resets on restart → expected (ephemeral disk); switch to RedBeat / DatabaseScheduler if persistence needed
 
