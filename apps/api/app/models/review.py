@@ -1,11 +1,15 @@
 import enum
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from app.models.vocab_item import VocabItem
 
 
 class ReviewQuality(enum.IntEnum):
@@ -38,3 +42,5 @@ class Review(Base, TimestampMixin):
         DateTime(timezone=True), nullable=True, index=True
     )
     suspended: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    vocab_item: Mapped["VocabItem"] = relationship("VocabItem", lazy="raise")

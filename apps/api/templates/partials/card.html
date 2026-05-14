@@ -1,0 +1,9 @@
+<div id="review-card" class="rounded-lg border border-slate-200 bg-white p-8 shadow-sm" hx-target="this" hx-swap="outerHTML">
+  <p class="text-sm uppercase tracking-wide text-slate-500">{{ vocab.language }}</p>
+  <h1 class="mt-2 text-3xl font-semibold text-slate-900">{{ vocab.token }}</h1>
+  <button
+    class="mt-6 rounded-md bg-slate-900 px-4 py-2 text-white hover:bg-slate-700"
+    hx-get="/review/{{ review.id }}/reveal">
+    Reveal definition
+  </button>
+</div>
