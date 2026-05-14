@@ -1,7 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.review import ReviewQuality, ReviewState, ReviewUpdate
+from app.models.review import ReviewQuality
+from app.schemas.review import ReviewState, ReviewUpdate
 
 
 def test_review_state_accepts_valid_inputs() -> None:
