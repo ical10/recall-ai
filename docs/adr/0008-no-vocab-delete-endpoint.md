@@ -1,0 +1,5 @@
+# No `DELETE /vocab/{id}` endpoint; deletion is per-user via `DELETE /reviews/{vocab_id}`
+
+`VocabItem` is a shared corpus — uniqueness is global on `(token, language)` and any user who adds a word contributes it to a pool everyone else can also pick up. Personal study state lives in the per-user `Review` table on top. Exposing a `DELETE /vocab/{id}` endpoint that any authenticated user could call would let one user wipe everyone's Reviews via CASCADE — incompatible with the shared-pool model. We drop the endpoint entirely and replace the user-facing "remove this from my deck" action with `DELETE /reviews/{vocab_id}`, which deletes only the caller's own Review row.
+
+Considered (a) adding `VocabItem.added_by_user_id` and gating delete on ownership — rejected because the dictionary is meant to be a shared resource, not a personal one; (b) introducing an admin role for corpus mutation — rejected as premature given there's no RBAC story yet. The CASCADE on `Review.vocab_item_id` remains in place so a future admin-only hard-delete (or batch cleanup script) gets correct cleanup for free. The mental model to preserve: the dictionary is shared, your deck is yours.

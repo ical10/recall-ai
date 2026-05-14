@@ -1,0 +1,5 @@
+# Per-user timezone on the User model
+
+User-facing day boundaries (streak, "due today") need to roll over at the user's local midnight, not UTC's. We add a `User.timezone: str` column (IANA name, default `"UTC"`) and evaluate every user-scoped date computation in that timezone via `func.timezone(user.timezone, Review.last_reviewed_at)` in Postgres or `ZoneInfo(user.timezone)` in Python. The dev user is set to `"Asia/Jakarta"` manually after the migration; future OAuth users will be populated from the browser's `Intl.DateTimeFormat().resolvedOptions().timeZone`.
+
+Considered (a) all-UTC and accepting the streak off-by-one — rejected because the cross-midnight skew is user-visible and meaningful for a habit tracker; (b) a single hardcoded `Asia/Jakarta` constant — rejected as YAGNI-in-reverse: it's the same migration cost to do it per-user, and once it's per-user there's no migration to write later when scaling to other users. The cron schedule (`content-gen-daily`) is intentionally **not** per-user; it's a shared global job and stays UTC.

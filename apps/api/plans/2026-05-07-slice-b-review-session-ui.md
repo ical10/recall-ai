@@ -24,8 +24,9 @@
 
 **Modify:**
 - `apps/api/app/api/router.py` — add `router.include_router(reviews_router)`
+- `apps/api/app/main.py` — add `SessionMiddleware` (signed-cookie session for the in-session "Again" re-queue)
 
-**No edits to:** any model, schema (other than imports), service, migration, `main.py`, base template.
+**No edits to:** any model, schema (other than imports), service, migration, base template.
 
 ---
 
@@ -43,7 +44,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import contains_eager
 
 from app.api.deps import get_current_user, templates
 from app.core.db import get_session
@@ -55,22 +56,55 @@ from app.services.sm2 import compute_next_review
 
 router = APIRouter()
 
+AGAIN_REQUEUE_MINUTES = 10
+AGAIN_QUEUE_KEY = "again_queue"   # request.session key: list[{"id": str, "after": iso8601 str}]
+
 
 async def _next_due_review(
     session: AsyncSession, user_id: UUID, now: datetime
 ) -> Review | None:
     stmt = (
         select(Review)
-        .options(joinedload(Review.vocab_item))   # see step 2
+        .join(Review.vocab_item)
+        .options(contains_eager(Review.vocab_item))
         .where(
             Review.user_id == user_id,
             Review.suspended.is_(False),
+            VocabItem.definition != "",   # hide pending enrichment — see ADR-0001
             or_(Review.due_at.is_(None), Review.due_at <= now),
         )
         .order_by(Review.due_at.asc().nulls_first(), Review.created_at.asc())
         .limit(1)
     )
     return (await session.execute(stmt)).scalar_one_or_none()
+
+
+async def _pick_next_review(
+    session: AsyncSession,
+    user_id: UUID,
+    now: datetime,
+    again_queue: list[dict[str, str]],
+) -> tuple[Review | None, list[dict[str, str]]]:
+    """Prefer an entry from the in-session 'Again' queue whose `after` is past;
+    fall back to the DB's oldest due review. Returns the chosen review and the
+    pruned queue (the picked entry, if any, is removed)."""
+    ready = [e for e in again_queue if datetime.fromisoformat(e["after"]) <= now]
+    pending = [e for e in again_queue if datetime.fromisoformat(e["after"]) > now]
+    if ready:
+        ready.sort(key=lambda e: e["after"])
+        picked = ready[0]
+        stmt = (
+            select(Review)
+            .join(Review.vocab_item)
+            .options(contains_eager(Review.vocab_item))
+            .where(Review.id == UUID(picked["id"]), Review.user_id == user_id)
+        )
+        review = (await session.execute(stmt)).scalar_one_or_none()
+        if review is not None:
+            return review, ready[1:] + pending
+        # Picked review vanished (deleted / not-owner) — fall through.
+        return await _next_due_review(session, user_id, now), ready[1:] + pending
+    return await _next_due_review(session, user_id, now), pending
 ```
 
 - [ ] **Step 2**: `joinedload(Review.vocab_item)` requires `Review` to declare a relationship to `VocabItem`. Check `apps/api/app/models/review.py` — if there is no `vocab_item: Mapped["VocabItem"] = relationship(...)` field yet, add one in this slice. (This is a non-schema change — relationships are ORM-only and don't generate a migration.) Add to `apps/api/app/models/review.py`:
@@ -99,7 +133,9 @@ async def review_page(
     user: User = Depends(get_current_user),
 ) -> Response:
     now = datetime.now(timezone.utc)
-    review = await _next_due_review(session, user.id, now)
+    again_queue: list[dict[str, str]] = request.session.get(AGAIN_QUEUE_KEY, [])
+    review, again_queue = await _pick_next_review(session, user.id, now, again_queue)
+    request.session[AGAIN_QUEUE_KEY] = again_queue
     if review is None:
         return templates.TemplateResponse(request, "partials/done.html")
     return templates.TemplateResponse(
@@ -163,7 +199,8 @@ async def review_reveal(
 ) -> Response:
     stmt = (
         select(Review)
-        .options(joinedload(Review.vocab_item))
+        .join(Review.vocab_item)
+        .options(contains_eager(Review.vocab_item))
         .where(Review.id == review_id, Review.user_id == user.id)
     )
     review = (await session.execute(stmt)).scalar_one_or_none()
@@ -244,7 +281,19 @@ async def review_rate(
     review.due_at = now + timedelta(days=update.interval_days)
     await session.commit()
 
-    next_review = await _next_due_review(session, user.id, now)
+    again_queue: list[dict[str, str]] = request.session.get(AGAIN_QUEUE_KEY, [])
+    # Whatever the rating, drop any prior entry for this review_id.
+    again_queue = [e for e in again_queue if e["id"] != str(review_id)]
+    # On "Again" (quality=0), re-queue for in-session retry — SM-2's 1-day push
+    # remains on the row, but we surface the card again locally to drill recall.
+    if quality_enum == ReviewQuality.AGAIN:
+        again_queue.append({
+            "id": str(review_id),
+            "after": (now + timedelta(minutes=AGAIN_REQUEUE_MINUTES)).isoformat(),
+        })
+
+    next_review, again_queue = await _pick_next_review(session, user.id, now, again_queue)
+    request.session[AGAIN_QUEUE_KEY] = again_queue
     if next_review is None:
         return templates.TemplateResponse(request, "partials/done.html")
     return templates.TemplateResponse(
@@ -260,7 +309,7 @@ async def review_rate(
 
 ---
 
-## Task 5: Wire the router
+## Task 5: Wire the router and add SessionMiddleware
 
 - [ ] **Step 1**: Edit `apps/api/app/api/router.py`:
 
@@ -273,9 +322,28 @@ router = APIRouter()
 router.include_router(reviews_router)
 ```
 
-(If A/B/C/D are merging in order A→B→C→D, this is a clean addition. If another slice has already added an include line, append in alphabetical order: dashboard, reviews, vocab.)
+(Merge order is D → A → B → C. By the time Slice B lands, Slice A has not touched the router. Slice C will append `dashboard_router` later. If another order is used, keep includes alphabetical by file: dashboard, reviews, vocab.)
 
-- [ ] **Step 2**: Commit — `feat: wire reviews router into app.api.router`.
+- [ ] **Step 2**: Edit `apps/api/app/main.py` to add `SessionMiddleware`. The session cookie carries the in-session "Again" re-queue. Use the existing `settings.secret_key`:
+
+```python
+from starlette.middleware.sessions import SessionMiddleware
+from app.core.config import get_settings
+
+# inside create_app(), before app.mount("/static", ...):
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=get_settings().secret_key.get_secret_value(),
+    session_cookie="recallai_session",
+    max_age=60 * 60 * 4,   # 4h — outlives normal review sessions
+    same_site="lax",
+    https_only=False,      # flip to True once HTTPS is enforced in prod
+)
+```
+
+`starlette` is already a transitive dep of FastAPI, no `pyproject.toml` change needed.
+
+- [ ] **Step 3**: Commit — `feat: wire reviews router and add SessionMiddleware for in-session Again re-queue`.
 
 ---
 
@@ -289,15 +357,31 @@ def test_get_review_renders_done_when_no_due_reviews(...): ...
 def test_get_review_excludes_suspended_reviews(...): ...
 def test_get_review_excludes_other_users_reviews(...): ...
 def test_get_review_treats_null_due_at_as_due(...): ...
+def test_get_review_skips_vocab_with_empty_definition(...):
+    # Seed a Review for the current user with due_at <= now and vocab_item.definition == "".
+    # Assert the response renders the "done" partial, not the unenriched card.
 def test_reveal_returns_partial_with_definition(...): ...
 def test_reveal_404_when_not_owner(...): ...
 def test_rate_updates_review_with_sm2_output(...): ...
     # Insert review with ease_factor=2.5, interval_days=0, repetitions=0; POST quality=4;
     # assert post-state matches compute_next_review's output (don't reimplement SM-2 — call it).
-def test_rate_quality_again_resets_repetitions(...): ...
+def test_rate_quality_again_resets_repetitions(...):
+    # Start state(reps=3, interval=12). POST quality=0. Assert reps=0, interval=1.
+def test_rate_quality_hard_keeps_repetition_progression(...):
+    # Start state(reps=3, interval=12). POST quality=2 (Hard). Assert reps=4,
+    # interval=round(12*1.2)=14 (per Slice 0.5 / ADR-0006).
 def test_rate_advances_to_next_due_card_in_response(...): ...
 def test_rate_returns_done_partial_when_no_more_due(...): ...
-def test_rate_rejects_invalid_quality_value(...): ...
+def test_rate_again_requeues_card_within_session(...):
+    # Two due cards. Rate the first with quality=0 (Again). Assert the second is returned next.
+    # Advance time by AGAIN_REQUEUE_MINUTES. Rate the second with quality=4. Assert the first is
+    # returned next (came back from the cookie-backed again_queue) — not the "done" partial.
+def test_rate_again_does_not_requeue_before_delay_elapses(...):
+    # One due card. Rate it Again. The next /review hit returns "done" because the requeue
+    # delay has not elapsed (and there are no other due cards).
+def test_rate_other_qualities_do_not_requeue(...):
+    # Rate a card with quality=4 (Good). Assert the again_queue cookie is empty / unchanged.
+def test_rate_rejects_invalid_quality_value(...):
     # POST quality=3 → 422.
 def test_rate_404_when_not_owner(...): ...
 def test_rate_sets_last_reviewed_at_and_due_at(...): ...
@@ -345,6 +429,8 @@ Click "Reveal definition" → 4 rating buttons appear. Click any rating → card
 - `POST /review/{id}/rate` accepts quality ∈ {0, 2, 4, 5}, updates the row via `compute_next_review`, sets `last_reviewed_at` and `due_at`, and returns either the next card partial or the done partial. Invalid quality → 422.
 - HTMX swaps `#review-card` in place — no full page reload between cards.
 - Suspended reviews are never returned. Reviews owned by other users are never returned.
+- Reviews whose `vocab_item.definition` is the empty string (pending enrichment) are never returned — see ADR-0001.
+- A card rated "Again" (quality=0) is re-surfaced within the same browser session after `AGAIN_REQUEUE_MINUTES` (the in-session re-queue is held in the signed session cookie). Other qualities do not re-queue.
 - All tests in `apps/api/tests/api/test_reviews.py` pass; ruff + mypy clean.
 
 ## Notes / gotchas
@@ -352,6 +438,7 @@ Click "Reveal definition" → 4 rating buttons appear. Click any rating → card
 - **Dependency override seam.** Tests should override `get_current_user`, not patch DB queries. When real auth lands, the same override pattern still works.
 - **`due_at` semantics.** `null` means "never reviewed → immediately due". After the first rating, `due_at` is always set. The `_next_due_review` query treats both as due.
 - **`hx-vals` form encoding.** HTMX 2.x sends `hx-vals` as form fields with the default content-type. `quality` is read with `Form(...)`. If you switch to JSON encoding, change to `quality: int = Body(..., embed=True)` and add `hx-ext="json-enc"`.
-- **`joinedload` on the relationship.** Without the eager load, `review.vocab_item.token` triggers a lazy load — and `lazy="raise"` will throw inside the template. Keep `joinedload(Review.vocab_item)` on every read path.
+- **Eager loading on the relationship.** Without an eager load, `review.vocab_item.token` triggers a lazy load — and `lazy="raise"` will throw inside the template. Use `.join(Review.vocab_item)` + `contains_eager(Review.vocab_item)` on every read path; the JOIN is required anyway because `_next_due_review` filters on `VocabItem.definition`.
 - **Timezone.** All `datetime.now()` calls use `timezone.utc`. The `due_at` column is `DateTime(timezone=True)` (see `apps/api/app/models/review.py:37`).
 - **No new schemas.** This slice does not add or modify pydantic schemas — `ReviewState`, `ReviewQuality`, and `compute_next_review` are reused as-is.
+- **In-session "Again" re-queue.** The signed session cookie holds `again_queue: list[{id, after}]`. When the user clicks "Again", we append `(review_id, now + 10min)` and pop it back from `_pick_next_review` once the delay elapses. The SM-2 update on the row still runs (interval=1d, repetitions=0), so the long-term schedule is unchanged — we only override the *immediate next surface*. Cookie lifetime is 4h; closing the browser past that window forfeits the queue. If persistence is needed later, swap to a Redis-backed session or a dedicated table.

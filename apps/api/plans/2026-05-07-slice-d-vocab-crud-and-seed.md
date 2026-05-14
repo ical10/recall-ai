@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Endpoints to list / create / suspend / delete vocab items, plus a CLI seed script to bootstrap a deck from a JSON or CSV file. Creating a vocab item also creates a `Review` row for the current user with `due_at = now()` so it shows up immediately in `/review`. The seed script is the practical entry point for filling the daily content-generation pipeline (Slice A) with targets to enrich.
+**Goal:** Endpoints to list / create / suspend vocab items, plus a per-user "remove from my deck" endpoint, plus a CLI seed script to bootstrap a deck from a JSON or CSV file. Creating a vocab item also creates a `Review` row for the current user with `due_at = now()` so it shows up immediately in `/review`. The seed script is the practical entry point for filling the daily content-generation pipeline (Slice A) with targets to enrich.
 
-**Architecture:** A single `app/api/vocab.py` sub-router with four endpoints. JSON-only for v1 — no HTMX list page in this slice (a follow-up can add `pages/vocab.html`). Idempotent `POST /vocab` keys on the `(token, language)` unique constraint and returns 200 on existing or 201 on create. The seed script runs against the async DB engine via `asyncio.run`, so it has no dependency on Slice A's `db_sync` module.
+**Architecture:** A single `app/api/vocab.py` sub-router with four endpoints — three on `/vocab` (list, create, toggle-suspend) and one on `/reviews/{vocab_id}` (delete-from-my-deck). No `DELETE /vocab/{id}` exists: the `VocabItem` corpus is shared across users, and a non-admin user can only mutate their own per-user `Review` rows. See [ADR-0008](../../../docs/adr/0008-no-vocab-delete-endpoint.md). JSON-only for v1 — no HTMX list page in this slice (a follow-up can add `pages/vocab.html`). Idempotent `POST /vocab` keys on the `(token, language)` unique constraint and returns 200 on existing or 201 on create. The seed script runs against the async DB engine via `asyncio.run`.
 
 **Prerequisite:** Slice 0 merged (provides `get_current_user`, `app.api.router`).
 
@@ -16,7 +16,7 @@
 
 **Create:**
 - `apps/api/app/schemas/vocab.py` — `VocabCreate`, `VocabRead`, `VocabListResponse`
-- `apps/api/app/api/vocab.py` — sub-router with the four endpoints
+- `apps/api/app/api/vocab.py` — sub-router with the four endpoints (three on `/vocab`, one on `/reviews/{vocab_id}`)
 - `apps/api/scripts/__init__.py`
 - `apps/api/scripts/seed_vocab.py` — CLI seed entrypoint
 - `apps/api/scripts/seed_examples.json` — small example seed file (3-5 rows) for smoke testing
@@ -165,14 +165,19 @@ async def suspend_vocab(
     return {"suspended": review.suspended}
 
 
-@router.delete("/vocab/{vocab_id}", status_code=204)
-async def delete_vocab(
+@router.delete("/reviews/{vocab_id}", status_code=204)
+async def delete_review(
     vocab_id: UUID,
     session: AsyncSession = Depends(get_session),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ) -> None:
+    """Remove the caller's Review for this VocabItem (i.e. take it off their deck).
+    The shared VocabItem stays — other users keep their own Reviews on it.
+    See ADR-0008 for why there's no DELETE /vocab/{id}."""
     result = await session.execute(
-        delete(VocabItem).where(VocabItem.id == vocab_id)
+        delete(Review).where(
+            Review.user_id == user.id, Review.vocab_item_id == vocab_id,
+        )
     )
     if result.rowcount == 0:
         raise HTTPException(status_code=404)
@@ -181,7 +186,7 @@ async def delete_vocab(
 
 `POST` body validates min/max lengths via the schema. Idempotency: if `(token, language)` exists, return the existing row with status 200; otherwise insert with 201. Either way, ensure a `Review` row exists for `current_user` with `due_at=now()`. `definition=""` is the marker the Slice A selection service keys off.
 
-- [ ] **Step 2**: Commit — `feat: add vocab CRUD endpoints (list/create/suspend/delete)`.
+- [ ] **Step 2**: Commit — `feat: add vocab endpoints (list/create/suspend) and DELETE /reviews/{vocab_id}`.
 
 ---
 
@@ -221,6 +226,8 @@ Usage:
   python -m scripts.seed_vocab path/to/seed.json
   python -m scripts.seed_vocab path/to/seed.csv --csv
   python -m scripts.seed_vocab seed.json --create-reviews-for dev@local
+  python -m scripts.seed_vocab seed.json --create-reviews-for dev@local --ensure-user \
+      --user-name Dev --user-timezone Asia/Jakarta
 """
 from __future__ import annotations
 
@@ -272,12 +279,37 @@ async def _upsert_vocab(session: AsyncSession, rows: list[dict[str, str]]) -> li
     return items
 
 
+async def _upsert_user(
+    session: AsyncSession, email: str, name: str, tz: str
+) -> User:
+    """Get-or-create a User by email; idempotent. Used only when `--ensure-user`
+    is passed — a dev-environment convenience so a fresh DB doesn't need an
+    HTTP-request pre-step to create the dev user."""
+    user = (await session.execute(
+        select(User).where(User.email == email)
+    )).scalar_one_or_none()
+    if user is not None:
+        return user
+    user = User(
+        email=email,
+        google_id=f"seed-{email}",
+        name=name,
+        timezone=tz,
+    )
+    session.add(user)
+    await session.flush()
+    return user
+
+
 async def _ensure_reviews(session: AsyncSession, items: list[VocabItem], email: str) -> int:
     user = (await session.execute(
         select(User).where(User.email == email)
     )).scalar_one_or_none()
     if user is None:
-        raise SystemExit(f"user with email {email!r} not found — run the app once to create dev@local")
+        raise SystemExit(
+            f"user with email {email!r} not found — "
+            f"run the app once to create dev@local, or re-run with --ensure-user"
+        )
     created = 0
     now = datetime.now(timezone.utc)
     for item in items:
@@ -299,13 +331,29 @@ async def main() -> None:
     parser.add_argument("--csv", action="store_true", help="Treat input as CSV")
     parser.add_argument("--create-reviews-for", type=str, default=None,
                         help="Email of user to create due Review rows for")
+    parser.add_argument("--ensure-user", action="store_true",
+                        help="Upsert the --create-reviews-for user if missing (dev convenience)")
+    parser.add_argument("--user-name", type=str, default="Dev",
+                        help="Name to use when --ensure-user creates a new row")
+    parser.add_argument("--user-timezone", type=str, default="UTC",
+                        help="IANA timezone to use when --ensure-user creates a new row")
     args = parser.parse_args()
+
+    if args.ensure_user and not args.create_reviews_for:
+        parser.error("--ensure-user requires --create-reviews-for")
 
     rows = _read_rows(args.path, csv_mode=args.csv)
     async with SessionLocal() as session:
         items = await _upsert_vocab(session, rows)
         review_count = 0
         if args.create_reviews_for:
+            if args.ensure_user:
+                await _upsert_user(
+                    session,
+                    email=args.create_reviews_for,
+                    name=args.user_name,
+                    tz=args.user_timezone,
+                )
             review_count = await _ensure_reviews(session, items, args.create_reviews_for)
         await session.commit()
     print(f"seeded {len(items)} vocab items; created {review_count} reviews")
@@ -354,10 +402,20 @@ def test_patch_vocab_suspend_toggles_review_suspended_flag(...):
 def test_patch_vocab_suspend_404_when_no_review_for_user(...):
     # Pre-insert VocabItem but no Review for current_user; PATCH → 404.
 
-def test_delete_vocab_removes_item_and_cascades_reviews(...):
-    # Pre-insert VocabItem + Review for current_user. DELETE → 204; both rows gone.
+def test_delete_review_removes_only_callers_review(...):
+    # Pre-insert two Reviews on the same VocabItem: one for current_user, one for user_b.
+    # DELETE /reviews/{vocab_id} → 204. Assert current_user's Review is gone,
+    # user_b's Review still exists, VocabItem itself still exists.
 
-def test_delete_vocab_404_when_item_missing(...): ...
+def test_delete_review_404_when_caller_has_no_review_for_vocab(...):
+    # Pre-insert VocabItem with no Review for current_user. DELETE → 404.
+
+def test_delete_review_does_not_delete_vocab_item(...):
+    # Pre-insert VocabItem + Review for current_user. DELETE → 204.
+    # Assert SELECT count(*) FROM vocab_items WHERE id=... is still 1.
+
+def test_no_delete_vocab_endpoint_exposed(client):
+    # DELETE /vocab/{any_uuid} → 405 Method Not Allowed (route doesn't exist).
 
 def test_post_vocab_rejects_empty_token(...):
     # body {"token": "", "language": "en"} → 422.
@@ -385,6 +443,17 @@ def test_seed_vocab_skips_blank_rows(...):
 
 def test_seed_vocab_errors_when_user_not_found(...):
     # No user; --create-reviews-for missing@local → SystemExit.
+
+def test_seed_vocab_ensure_user_upserts_missing_user(...):
+    # No user. Run with --create-reviews-for dev@local --ensure-user --user-name Dev
+    # --user-timezone Asia/Jakarta. Assert: User row created with those fields,
+    # Reviews created for the seeded vocab.
+
+def test_seed_vocab_ensure_user_is_idempotent(...):
+    # Pre-insert user. Run with --ensure-user → no duplicate user row; reviews still created.
+
+def test_seed_vocab_ensure_user_without_create_reviews_for_errors(...):
+    # --ensure-user alone (no --create-reviews-for) → argparse error / SystemExit.
 ```
 
 The simplest invocation in tests is to import `scripts.seed_vocab` and call its `main()` while monkeypatching `sys.argv`. To avoid clobbering the test session, override `app.core.db.SessionLocal` to point at the test session — or have `main()` accept an injected sessionmaker (cleaner; recommended). Refactor `main()` to take an optional `session_factory` parameter so tests can pass the test sessionmaker without monkeypatching:
@@ -420,8 +489,11 @@ curl -s -X POST http://localhost:8000/vocab \
   -H 'content-type: application/json' \
   -d '{"token":"ephemeral","language":"en"}'
 
-uv run --project . python -m scripts.seed_vocab apps/api/scripts/seed_examples.json --create-reviews-for dev@local
+uv run --project . python -m scripts.seed_vocab apps/api/scripts/seed_examples.json \
+  --create-reviews-for dev@local --ensure-user \
+  --user-name Dev --user-timezone Asia/Jakarta
 # expected output: "seeded 4 vocab items; created N reviews"
+# (works against a freshly-migrated DB — no HTTP request needed first.)
 
 curl -s 'http://localhost:8000/vocab?page=1&page_size=20'
 open http://localhost:8000/review     # the seeded items should appear in turn
@@ -436,8 +508,8 @@ open http://localhost:8000/review     # the seeded items should appear in turn
 - `GET /vocab` returns paginated items + correct total.
 - `POST /vocab` creates a VocabItem (status 201) and a due Review row for `current_user`. Repeated POST with the same `(token, language)` returns 200 with the existing row, no duplicate Review for the same user.
 - `PATCH /vocab/{id}/suspend` toggles `Review.suspended` for the (current_user, vocab_id) pair; 404 when no Review exists for that user.
-- `DELETE /vocab/{id}` removes the VocabItem and cascades to Reviews; 204 on success, 404 if missing.
-- `python -m scripts.seed_vocab path.json` upserts rows and skips duplicates. With `--create-reviews-for <email>`, creates due Review rows for that user.
+- `DELETE /reviews/{vocab_id}` removes only the caller's `Review` row for that VocabItem; 204 on success, 404 if no Review exists for the caller. The `VocabItem` and other users' Reviews are untouched. No `DELETE /vocab/{id}` endpoint exists — see [ADR-0008](../../../docs/adr/0008-no-vocab-delete-endpoint.md).
+- `python -m scripts.seed_vocab path.json` upserts rows and skips duplicates. With `--create-reviews-for <email>`, creates due Review rows for that user. With `--ensure-user` (requires `--create-reviews-for`), upserts the target user from `--user-name` and `--user-timezone` before creating Reviews, so a fresh-DB setup is a single command.
 - Invalid input (empty token, oversized strings) → 422.
 - All tests in `tests/api/test_vocab.py` and `tests/scripts/test_seed_vocab.py` pass; ruff + mypy clean.
 
@@ -445,7 +517,7 @@ open http://localhost:8000/review     # the seeded items should appear in turn
 
 - **`definition=""` placeholder.** This is the convention Slice A's `select_unenriched` keys off. Do not use `NULL` or some other sentinel. `nullable=False` on the column (see `apps/api/app/models/vocab_item.py:17`) precludes `NULL` anyway.
 - **Idempotency on `POST`.** The unique constraint `uq_vocab_items_token_language` (see `apps/api/app/models/vocab_item.py:11`) is the source of truth. Catching the `IntegrityError` on a race-conditioned insert and falling back to a SELECT is safer than the current "select-then-insert" — wrap the insert in a try/except `IntegrityError` if you expect concurrent POSTs. For v1 (single-user dev), the simple flow is fine.
-- **CASCADE delete.** `Review.user_id` and `Review.vocab_item_id` both have `ondelete="CASCADE"` (see `apps/api/app/models/review.py:26,29`). Deleting a VocabItem automatically deletes its reviews — no application-side cleanup needed.
+- **CASCADE on the FK is still in place** but unused by the application — there's no `DELETE /vocab/{id}` endpoint to trigger it. If you ever add an admin-only hard-delete in the future, the cascade will clean up Reviews automatically. Until then, `DELETE /reviews/{vocab_id}` only removes a single Review row by composite filter and leaves the VocabItem alone.
 - **No HTML page in this slice.** `GET /vocab` returns JSON only. A future slice can add `pages/vocab.html` with an HTMX list table using these endpoints.
 - **Auth replacement seam.** All four routes use `get_current_user`. When real auth lands, no changes are needed here.
 - **Seed script imports.** Run from `apps/api/` so `scripts.seed_vocab` resolves on the python path. Or use `uv run --project . python apps/api/scripts/seed_vocab.py` from the repo root — both work.
