@@ -48,6 +48,13 @@
 - tests: `pnpm test` (full suite) or `uv run pytest <path>` for a single file.
 - lint + types: `pnpm lint` runs ruff check + ruff format check + mypy strict on `apps/api/app`.
 
+### ci
+- workflow lives at `.github/workflows/ci.yml`. three parallel jobs: `Lint & Test` (ruff + mypy + pytest), `Migration Check` (alembic upgrade/downgrade/upgrade against a postgres:16-alpine service container), `Secret Scan (Gitleaks)`.
+- triggers on every push to `main` and every pull request. all jobs must be green before a PR can merge (once branch protection is applied — see `.github/BRANCH_PROTECTION.md`).
+- you cannot skip checks. there is no bypass flag, and `enforce_admins: true` applies to repo owners too.
+- dependabot config is at `.github/dependabot.yml`. it opens weekly PRs for github-actions, npm, and uv dependencies. minor+patch updates are grouped per ecosystem to reduce noise; major bumps get individual PRs.
+- to re-trigger a stuck PR: `gh run rerun <run-id>` or push an empty commit: `git commit --allow-empty -m "chore: retrigger CI" && git push`.
+
 ### railway
 - one repo, three services. each service uses its own nixpacks config so worker/beat skip the Node + Tailwind build (faster deploys, smaller images). The start command lives in each nixpacks file — no dashboard override needed.
   - **web**: default `nixpacks.toml` — installs python + uv + nodejs + pnpm, runs `pnpm install --frozen-lockfile`, `uv sync`, then `pnpm run build:css:prod` to compile Tailwind. Start: uvicorn. `/healthz` healthcheck via `railway.json`.
