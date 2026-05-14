@@ -1,4 +1,5 @@
-def test_root_returns_404_until_dashboard_lands(client):
-    response = client.get("/")
+def test_root_redirects_to_dashboard(client):
+    response = client.get("/", follow_redirects=False)
 
-    assert response.status_code == 404
+    assert response.status_code == 307
+    assert response.headers["location"] == "/dashboard"
