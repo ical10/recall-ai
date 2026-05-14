@@ -55,6 +55,8 @@ def test_vocab_item_model_table_and_columns() -> None:
         "definition",
         "example_sentence",
         "audio_url",
+        "enrichment_attempts",
+        "last_enrichment_attempted_at",
         "created_at",
         "updated_at",
     }
@@ -62,6 +64,8 @@ def test_vocab_item_model_table_and_columns() -> None:
     assert cols["language"].nullable is False
     assert cols["definition"].nullable is False
     assert cols["audio_url"].nullable is True
+    assert cols["enrichment_attempts"].nullable is False
+    assert cols["last_enrichment_attempted_at"].nullable is True
     # Composite uniqueness on (token, language)
     uniques = [
         tuple(sorted(c.name for c in u.columns))
