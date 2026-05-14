@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models.base import Base
@@ -80,8 +81,6 @@ def test_run_daily_persists_definition_and_example_to_vocab_item(
 
     async def _check() -> None:
         async with session_factory() as s:
-            from sqlalchemy import select
-
             rows = (await s.execute(select(VocabItem))).scalars().all()
             for row in rows:
                 assert row.definition != ""
@@ -190,8 +189,6 @@ def test_run_daily_increments_attempts_on_failure(
 
     async def _check() -> None:
         async with session_factory() as s:
-            from sqlalchemy import select
-
             row = (
                 await s.execute(select(VocabItem).where(VocabItem.token == "failword"))
             ).scalar_one()
@@ -220,8 +217,6 @@ def test_run_daily_resets_attempts_on_success(
 
     async def _check() -> None:
         async with session_factory() as s:
-            from sqlalchemy import select
-
             row = (
                 await s.execute(select(VocabItem).where(VocabItem.token == "recover"))
             ).scalar_one()
