@@ -15,8 +15,8 @@
     "lint": "uv run ruff check apps/api && uv run ruff format --check apps/api && uv run mypy apps/api/app"
   },
   "devDependencies": {
-    "concurrently": "^9.0.0",
-    "tailwindcss": "^3.4.0",
-    "turbo": "^2.0.0"
+    "concurrently": "9.2.1",
+    "tailwindcss": "3.4.19",
+    "turbo": "2.9.8"
   }
 }
