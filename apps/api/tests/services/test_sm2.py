@@ -72,13 +72,50 @@ def test_failure_clamps_ease_factor_at_floor() -> None:
     assert update.ease_factor == pytest.approx(1.3, abs=1e-9)
 
 
-def test_hard_quality_treated_as_failure() -> None:
+def test_hard_keeps_repetition_progression() -> None:
     from app.services.sm2 import compute_next_review
 
-    state = ReviewState(ease_factor=2.5, interval_days=20, repetitions=5)
+    state = ReviewState(ease_factor=2.5, interval_days=6, repetitions=2)
     update = compute_next_review(state, ReviewQuality.HARD)
-    assert update.repetitions == 0
+    assert update.repetitions == 3
+    assert update.interval_days == 7  # round(6 * 1.2) = 7
+    assert update.ease_factor == pytest.approx(2.35, abs=1e-9)
+
+
+def test_hard_grows_interval_by_multiplier_when_interval_is_one() -> None:
+    from app.services.sm2 import compute_next_review
+
+    state = ReviewState(ease_factor=2.5, interval_days=1, repetitions=1)
+    update = compute_next_review(state, ReviewQuality.HARD)
+    assert update.interval_days == 1  # round(1 * 1.2) = 1
+
+
+def test_hard_floors_interval_at_one_when_starting_at_zero() -> None:
+    from app.services.sm2 import compute_next_review
+
+    state = ReviewState(ease_factor=2.5, interval_days=0, repetitions=0)
+    update = compute_next_review(state, ReviewQuality.HARD)
     assert update.interval_days == 1
+    assert update.repetitions == 1
+    assert update.ease_factor == pytest.approx(2.35, abs=1e-9)
+
+
+def test_hard_floors_ease_at_minimum() -> None:
+    from app.services.sm2 import compute_next_review
+
+    state = ReviewState(ease_factor=1.4, interval_days=10, repetitions=5)
+    update = compute_next_review(state, ReviewQuality.HARD)
+    assert update.ease_factor == pytest.approx(1.3, abs=1e-9)
+    assert update.interval_days == 12  # round(10 * 1.2) = 12
+    assert update.repetitions == 6
+
+
+def test_hard_at_low_ease_does_not_underflow() -> None:
+    from app.services.sm2 import compute_next_review
+
+    state = ReviewState(ease_factor=1.30, interval_days=5, repetitions=2)
+    update = compute_next_review(state, ReviewQuality.HARD)
+    assert update.ease_factor == pytest.approx(1.3, abs=1e-9)
 
 
 def test_first_success_sets_interval_to_1() -> None:
