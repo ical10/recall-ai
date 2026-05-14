@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import uuid
 from datetime import UTC, datetime
 from unittest.mock import patch
@@ -228,3 +229,37 @@ def test_run_daily_resets_attempts_on_success(
             assert row.definition != ""
 
     asyncio.run(_check())
+
+
+def test_run_daily_logs_content_gen_item_failed_on_failure(
+    session_factory: async_sessionmaker[AsyncSession],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    item_id: str | None = None
+
+    async def _seed() -> None:
+        nonlocal item_id
+        async with session_factory() as s:
+            item = _item(token="failword", enrichment_attempts=0)
+            item_id = str(item.id)
+            s.add(item)
+            await s.commit()
+
+    asyncio.run(_seed())
+
+    with (
+        patch("app.workers.content_gen.SessionLocal", session_factory),
+        patch("app.workers.content_gen.LLMClient") as mock_cls,
+        caplog.at_level(logging.WARNING, logger="app.workers.content_gen"),
+    ):
+        mock_cls.return_value.complete.side_effect = LLMValidationFailure(
+            "fail", attempts=3, last_error=None
+        )
+        asyncio.run(_run_daily(batch_size=1))
+
+    failed_records = [r for r in caplog.records if r.message == "content_gen_item_failed"]
+    assert len(failed_records) == 1
+    r = failed_records[0]
+    assert getattr(r, "vocab_item_id", None) == item_id
+    assert getattr(r, "attempts", None) == 3
+    assert getattr(r, "total_attempts", None) == 1
