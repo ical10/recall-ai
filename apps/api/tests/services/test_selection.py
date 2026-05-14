@@ -15,14 +15,12 @@ from app.services.selection import (
 
 
 @pytest.fixture()
-def session() -> AsyncSession:
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
-
-    async def _setup() -> AsyncSession:
+def session_factory() -> async_sessionmaker[AsyncSession]:
+    async def _setup() -> async_sessionmaker[AsyncSession]:
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        maker = async_sessionmaker(engine, expire_on_commit=False)
-        return maker()
+        return async_sessionmaker(engine, expire_on_commit=False)
 
     return asyncio.run(_setup())
 
@@ -53,10 +51,10 @@ def _item(
 
 
 def test_select_unenriched_returns_only_items_missing_definition_or_example(
-    session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     async def _run() -> None:
-        async with session:
+        async with session_factory() as session:
             unenriched = _item(token="missing_def", definition="", example_sentence=None)
             enriched = _item(
                 token="has_def",
@@ -76,10 +74,10 @@ def test_select_unenriched_returns_only_items_missing_definition_or_example(
 
 
 def test_select_unenriched_returns_item_with_definition_but_no_example(
-    session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     async def _run() -> None:
-        async with session:
+        async with session_factory() as session:
             item = _item(
                 token="needs_example",
                 definition="A valid definition.",
@@ -95,10 +93,10 @@ def test_select_unenriched_returns_item_with_definition_but_no_example(
 
 
 def test_select_unenriched_respects_limit_and_orders_by_created_at(
-    session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     async def _run() -> None:
-        async with session:
+        async with session_factory() as session:
             now = datetime.now(UTC)
             older = _item(token="older", created_at=now - timedelta(hours=2))
             newer = _item(token="newer", created_at=now)
@@ -115,10 +113,10 @@ def test_select_unenriched_respects_limit_and_orders_by_created_at(
 
 
 def test_select_unenriched_returns_empty_list_when_limit_zero(
-    session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     async def _run() -> None:
-        async with session:
+        async with session_factory() as session:
             session.add(_item(token="word"))
             await session.commit()
             results = await select_unenriched(session, limit=0)
@@ -128,10 +126,10 @@ def test_select_unenriched_returns_empty_list_when_limit_zero(
 
 
 def test_select_unenriched_returns_empty_list_when_all_enriched(
-    session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     async def _run() -> None:
-        async with session:
+        async with session_factory() as session:
             session.add(
                 _item(
                     token="rich",
@@ -147,10 +145,10 @@ def test_select_unenriched_returns_empty_list_when_all_enriched(
 
 
 def test_select_unenriched_skips_items_in_cooldown(
-    session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     async def _run() -> None:
-        async with session:
+        async with session_factory() as session:
             now = datetime.now(UTC)
             cooldown_item = _item(
                 token="cooldown",
@@ -167,10 +165,10 @@ def test_select_unenriched_skips_items_in_cooldown(
 
 
 def test_select_unenriched_returns_item_after_cooldown_expires(
-    session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     async def _run() -> None:
-        async with session:
+        async with session_factory() as session:
             now = datetime.now(UTC)
             expired = _item(
                 token="expired_cooldown",
@@ -187,10 +185,10 @@ def test_select_unenriched_returns_item_after_cooldown_expires(
 
 
 def test_select_unenriched_returns_never_attempted_item_regardless_of_attempts_field(
-    session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     async def _run() -> None:
-        async with session:
+        async with session_factory() as session:
             never_attempted = _item(
                 token="never_attempted",
                 enrichment_attempts=0,

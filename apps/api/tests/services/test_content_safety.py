@@ -1,5 +1,7 @@
 import re
 
+import pytest
+
 from app.services.content_safety import contains_disallowed_term
 
 
@@ -11,7 +13,7 @@ def test_contains_disallowed_term_returns_false_when_denylist_empty() -> None:
     assert contains_disallowed_term("") is False
 
 
-def test_contains_disallowed_term_is_case_insensitive(monkeypatch: object) -> None:
+def test_contains_disallowed_term_is_case_insensitive(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.services.content_safety as cs_module
 
     pattern = re.compile(r"\b(?:foo)\b", flags=re.IGNORECASE)
@@ -22,7 +24,7 @@ def test_contains_disallowed_term_is_case_insensitive(monkeypatch: object) -> No
     assert cs_module.contains_disallowed_term("Foo bar") is True
 
 
-def test_contains_disallowed_term_uses_word_boundaries(monkeypatch: object) -> None:
+def test_contains_disallowed_term_uses_word_boundaries(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.services.content_safety as cs_module
 
     pattern = re.compile(r"\b(?:ass)\b", flags=re.IGNORECASE)
