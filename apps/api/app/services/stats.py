@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
@@ -38,7 +38,13 @@ async def _fetch_review_dates(
             .scalars()
             .all()
         )
-        return {ts.astimezone(user_tz).date() for ts in raw_timestamps if ts is not None}
+        # aiosqlite strips tzinfo; astimezone on a naive datetime treats it as local
+        # system time instead of UTC, so we must explicitly mark it as UTC first.
+        return {
+            ts.replace(tzinfo=UTC).astimezone(user_tz).date()
+            for ts in raw_timestamps
+            if ts is not None
+        }
 
     local_review_date = func.date(func.timezone(user.timezone, Review.last_reviewed_at))
     raw_dates = (

@@ -337,3 +337,86 @@ def test_user_stats_rejects_more_than_five_recent() -> None:
 def test_user_stats_rejects_negative_counts() -> None:
     with pytest.raises(ValidationError):
         UserStats(due_today=-1, total_reviews=0, current_streak=0, recent=[])
+
+
+# ---------------------------------------------------------------------------
+# SQLite fallback timezone bucketing (DB-level tests)
+# ---------------------------------------------------------------------------
+
+
+def test_streak_uses_user_timezone_when_reviews_straddle_utc_midnight(
+    tmp_path: Path,
+) -> None:
+    """User in Asia/Jakarta (UTC+7). Two reviews on the same Jakarta-local
+    day but on different UTC days. Expect streak=1, not 2.
+
+    Seed 1: last_reviewed_at = 2026-05-13 23:00 UTC = 2026-05-14 06:00 Jakarta
+    Seed 2: last_reviewed_at = 2026-05-14 13:00 UTC = 2026-05-14 20:00 Jakarta
+
+    UTC bucketing gives {2026-05-13, 2026-05-14} → streak=2 (wrong).
+    Jakarta bucketing gives {2026-05-14} → streak=1 (correct).
+    """
+    factory = _make_factory(str(tmp_path / "db.sqlite"))
+    user = asyncio.run(_insert_user(factory, tz="Asia/Jakarta"))
+    today_jakarta = date(2026, 5, 14)
+
+    async def setup() -> None:
+        vid1 = await _insert_vocab(factory, "jakarta1")
+        vid2 = await _insert_vocab(factory, "jakarta2")
+        await _insert_review(
+            factory,
+            user.id,
+            vid1,
+            last_reviewed_at=datetime(2026, 5, 13, 23, 0, tzinfo=UTC),
+        )
+        await _insert_review(
+            factory,
+            user.id,
+            vid2,
+            last_reviewed_at=datetime(2026, 5, 14, 13, 0, tzinfo=UTC),
+        )
+
+    asyncio.run(setup())
+    stats = asyncio.run(_get_stats(factory, user, today=today_jakarta))
+    assert stats.current_streak == 1
+
+
+def test_streak_uses_user_timezone_for_ny_consecutive_days(
+    tmp_path: Path,
+) -> None:
+    """User in America/New_York (UTC-4 EDT). One review buckets to NY-today and
+    one to NY-yesterday, forming a 2-day streak. The second seed's UTC timestamp
+    falls in a window where naive-datetime bucketing (buggy) shifts it one extra
+    day back to NY-day-before-yesterday, creating a gap and returning streak=1.
+
+    Seed 1: last_reviewed_at = 2026-05-14 15:00 UTC = 2026-05-14 11:00 EDT (NY-today)
+    Seed 2: last_reviewed_at = 2026-05-13 06:00 UTC = 2026-05-13 02:00 EDT (NY-yesterday)
+
+    Correct NY bucketing: {2026-05-14, 2026-05-13} → streak=2.
+    Buggy (naive treated as local UTC+8): {2026-05-14, 2026-05-12} → gap → streak=1.
+    """
+    factory = _make_factory(str(tmp_path / "db.sqlite"))
+    user = asyncio.run(_insert_user(factory, tz="America/New_York"))
+    today_ny = date(2026, 5, 14)
+
+    async def setup() -> None:
+        vid1 = await _insert_vocab(factory, "ny1")
+        vid2 = await _insert_vocab(factory, "ny2")
+        # 2026-05-14 15:00 UTC = 2026-05-14 11:00 EDT (NY-today)
+        await _insert_review(
+            factory,
+            user.id,
+            vid1,
+            last_reviewed_at=datetime(2026, 5, 14, 15, 0, tzinfo=UTC),
+        )
+        # 2026-05-13 06:00 UTC = 2026-05-13 02:00 EDT (NY-yesterday)
+        await _insert_review(
+            factory,
+            user.id,
+            vid2,
+            last_reviewed_at=datetime(2026, 5, 13, 6, 0, tzinfo=UTC),
+        )
+
+    asyncio.run(setup())
+    stats = asyncio.run(_get_stats(factory, user, today=today_ny))
+    assert stats.current_streak == 2
