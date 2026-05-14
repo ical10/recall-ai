@@ -9,13 +9,13 @@ importers:
   .:
     devDependencies:
       concurrently:
-        specifier: ^9.0.0
+        specifier: 9.2.1
         version: 9.2.1
       tailwindcss:
-        specifier: ^3.4.0
+        specifier: 3.4.19
         version: 3.4.19
       turbo:
-        specifier: ^2.0.0
+        specifier: 2.9.8
         version: 2.9.8
 
   apps/api: {}
