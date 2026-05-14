@@ -12,6 +12,50 @@ from app.models.vocab_item import VocabItem
 from app.schemas.stats import RecentRating, UserStats
 
 
+async def _fetch_review_dates(
+    session: AsyncSession,
+    user: User,
+    user_tz: ZoneInfo,
+) -> set[date]:
+    """Return the set of local dates on which the user has at least one review.
+
+    Uses func.timezone (Postgres) when available; falls back to Python-side
+    timezone conversion for SQLite (tests).
+    """
+    engine = session.get_bind()
+    dialect = engine.dialect.name if engine is not None else "postgresql"
+
+    if dialect == "sqlite":
+        raw_timestamps = (
+            (
+                await session.execute(
+                    select(Review.last_reviewed_at).where(
+                        Review.user_id == user.id,
+                        Review.last_reviewed_at.is_not(None),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return {ts.astimezone(user_tz).date() for ts in raw_timestamps if ts is not None}
+
+    local_review_date = func.date(func.timezone(user.timezone, Review.last_reviewed_at))
+    raw_dates = (
+        (
+            await session.execute(
+                select(local_review_date)
+                .where(Review.user_id == user.id, Review.last_reviewed_at.is_not(None))
+                .group_by(local_review_date)
+                .order_by(local_review_date.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return {d if isinstance(d, date) else date.fromisoformat(str(d)) for d in raw_dates}
+
+
 async def compute_user_stats(
     session: AsyncSession,
     user: User,
@@ -47,20 +91,7 @@ async def compute_user_stats(
     ).scalar_one()
 
     if review_dates is None:
-        local_review_date = func.date(func.timezone(user.timezone, Review.last_reviewed_at))
-        raw_dates = (
-            (
-                await session.execute(
-                    select(local_review_date)
-                    .where(Review.user_id == user.id, Review.last_reviewed_at.is_not(None))
-                    .group_by(local_review_date)
-                    .order_by(local_review_date.desc())
-                )
-            )
-            .scalars()
-            .all()
-        )
-        review_dates = {d if isinstance(d, date) else date.fromisoformat(str(d)) for d in raw_dates}
+        review_dates = await _fetch_review_dates(session, user, user_tz)
 
     streak = _compute_streak(review_dates, today)
 
