@@ -6,8 +6,10 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import RequestResponseEndpoint
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.router import router as api_router
+from app.core.config import get_settings
 from app.core.db import engine
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -23,6 +25,14 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="RecallAI", lifespan=lifespan)
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=get_settings().secret_key.get_secret_value(),
+        session_cookie="recallai_session",
+        max_age=60 * 60 * 4,
+        same_site="lax",
+        https_only=False,
+    )
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     @app.middleware("http")

@@ -1,0 +1,19 @@
+<div id="review-card" class="rounded-lg border border-slate-200 bg-white p-8 shadow-sm" hx-target="this" hx-swap="outerHTML">
+  <p class="text-sm uppercase tracking-wide text-slate-500">{{ vocab.language }}</p>
+  <h1 class="mt-2 text-3xl font-semibold text-slate-900">{{ vocab.token }}</h1>
+  <p class="mt-4 text-slate-700">{{ vocab.definition }}</p>
+  {% if vocab.example_sentence %}
+  <p class="mt-2 italic text-slate-500">{{ vocab.example_sentence }}</p>
+  {% endif %}
+
+  <div class="mt-6 grid grid-cols-2 gap-2">
+    <button class="rounded-md bg-rose-600 px-3 py-2 text-white"
+            hx-post="/review/{{ review.id }}/rate" hx-vals='{"quality": 0}'>Again</button>
+    <button class="rounded-md bg-amber-600 px-3 py-2 text-white"
+            hx-post="/review/{{ review.id }}/rate" hx-vals='{"quality": 2}'>Hard</button>
+    <button class="rounded-md bg-emerald-600 px-3 py-2 text-white"
+            hx-post="/review/{{ review.id }}/rate" hx-vals='{"quality": 4}'>Good</button>
+    <button class="rounded-md bg-sky-600 px-3 py-2 text-white"
+            hx-post="/review/{{ review.id }}/rate" hx-vals='{"quality": 5}'>Easy</button>
+  </div>
+</div>
