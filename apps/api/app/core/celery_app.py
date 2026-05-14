@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.schedules import crontab
 
 from app.core.config import get_settings
 
@@ -16,4 +17,13 @@ celery_app.conf.update(
     accept_content=["json"],
     timezone="UTC",
     enable_utc=True,
+    imports=("app.workers.content_gen",),
+    beat_schedule={
+        "content-gen-daily": {
+            "task": "content_gen.run_daily",
+            # 19:00 UTC = 02:00 WIB — true overnight for the current solo user.
+            "schedule": crontab(hour=19, minute=0),
+            "kwargs": {"batch_size": 25},
+        },
+    },
 )
