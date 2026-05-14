@@ -188,6 +188,13 @@ def test_seed_vocab_ensure_user_upserts_missing_user(tmp_path: Path) -> None:
     assert asyncio.run(_count_users(factory)) == 1
     assert asyncio.run(_count_reviews(factory)) == 1
 
+    async def check_timezone() -> str | None:
+        async with factory() as s:
+            user = (await s.execute(select(User))).scalar_one_or_none()
+            return user.timezone if user else None
+
+    assert asyncio.run(check_timezone()) == "Asia/Jakarta"
+
 
 def test_seed_vocab_ensure_user_is_idempotent(tmp_path: Path) -> None:
     factory = _make_factory(str(tmp_path / "db.sqlite"))
