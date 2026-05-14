@@ -34,6 +34,7 @@ def test_user_model_table_and_columns() -> None:
         "google_id",
         "name",
         "avatar_url",
+        "timezone",
         "created_at",
         "updated_at",
     }
@@ -42,6 +43,7 @@ def test_user_model_table_and_columns() -> None:
     assert cols["email"].nullable is False
     assert cols["google_id"].nullable is False
     assert cols["avatar_url"].nullable is True
+    assert cols["timezone"].nullable is False
 
 
 def test_vocab_item_model_table_and_columns() -> None:
