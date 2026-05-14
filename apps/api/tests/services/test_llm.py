@@ -94,6 +94,28 @@ def test_complete_returns_validated_pydantic_object_on_first_try() -> None:
     assert call_kwargs["model"] == "test-model"
     assert call_kwargs["timeout"] == 10.0
     assert call_kwargs["response_format"] == {"type": "json_object"}
+    assert call_kwargs["max_tokens"] == 1000
+
+
+def test_complete_passes_overridden_max_tokens_to_provider() -> None:
+    fake_openai = MagicMock()
+    fake_openai.chat.completions.create.return_value = _fake_completion(
+        json.dumps(
+            {
+                "token": "ephemeral",
+                "definition": "Lasting briefly; transient and short-lived.",
+                "example": "The cherry blossoms were ephemeral but unforgettable.",
+            }
+        )
+    )
+
+    client = LLMClient(
+        openai_client=fake_openai, model="test-model", timeout_s=10.0, max_tokens=250
+    )
+    client.complete("Define ephemeral.", SimpleVocabExample)
+
+    call_kwargs = fake_openai.chat.completions.create.call_args.kwargs
+    assert call_kwargs["max_tokens"] == 250
 
 
 def test_complete_logs_token_usage(caplog: pytest.LogCaptureFixture) -> None:

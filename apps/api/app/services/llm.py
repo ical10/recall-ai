@@ -27,6 +27,7 @@ class LLMClient:
         openai_client: OpenAI | None = None,
         model: str | None = None,
         timeout_s: float = 30.0,
+        max_tokens: int = 1000,
     ) -> None:
         settings = get_settings()
         self._client = openai_client or OpenAI(
@@ -35,6 +36,7 @@ class LLMClient:
         )
         self._model = model or settings.llm_model
         self._timeout_s = timeout_s
+        self._max_tokens = max_tokens
 
     def complete(self, prompt: str, response_schema: type[T], max_retries: int = 3) -> T:
         messages: list[ChatCompletionMessageParam] = [{"role": "user", "content": prompt}]
@@ -46,6 +48,7 @@ class LLMClient:
                 messages=messages,
                 response_format={"type": "json_object"},
                 timeout=self._timeout_s,
+                max_tokens=self._max_tokens,
             )
             usage = completion.usage
             logger.info(
