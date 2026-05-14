@@ -191,15 +191,22 @@ def test_select_unenriched_returns_never_attempted_item_regardless_of_attempts_f
 ) -> None:
     async def _run() -> None:
         async with session:
-            item = _item(
-                token="seed_item",
+            never_attempted = _item(
+                token="never_attempted",
                 enrichment_attempts=0,
                 last_enrichment_attempted_at=None,
             )
-            session.add(item)
+            max_attempts_never_tried = _item(
+                token="max_attempts_never_tried",
+                enrichment_attempts=MAX_ATTEMPTS_BEFORE_COOLDOWN,
+                last_enrichment_attempted_at=None,
+            )
+            session.add_all([never_attempted, max_attempts_never_tried])
             await session.commit()
 
             results = await select_unenriched(session, limit=10)
-            assert any(r.token == "seed_item" for r in results)
+            tokens = {r.token for r in results}
+            assert "never_attempted" in tokens
+            assert "max_attempts_never_tried" in tokens
 
     asyncio.run(_run())
