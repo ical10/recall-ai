@@ -1,33 +1,26 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, HTTPException, Query, Response
 from sqlalchemy import delete, func, select
 from sqlalchemy.engine import CursorResult
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
-from app.core.db import get_session
+from app.api.deps import SessionDep, UserDep
 from app.models.review import Review
-from app.models.user import User
 from app.models.vocab_item import VocabItem
 from app.schemas.vocab import VocabCreate, VocabListResponse, VocabRead
 
 router = APIRouter()
 
-SessionDep = Annotated[AsyncSession, Depends(get_session)]
-UserDep = Annotated[User, Depends(get_current_user)]
-
 
 @router.get("/vocab", response_model=VocabListResponse)
 async def list_vocab(
+    session: SessionDep,
+    _user: UserDep,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    session: SessionDep = ...,  # type: ignore[assignment]
-    _user: UserDep = ...,  # type: ignore[assignment]
 ) -> VocabListResponse:
     total = (await session.execute(select(func.count(VocabItem.id)))).scalar_one()
     rows = (
@@ -52,10 +45,10 @@ async def list_vocab(
 
 @router.post("/vocab", status_code=201)
 async def create_vocab(
+    session: SessionDep,
+    user: UserDep,
     body: VocabCreate,
     response: Response,
-    session: SessionDep = ...,  # type: ignore[assignment]
-    user: UserDep = ...,  # type: ignore[assignment]
 ) -> VocabRead:
     existing = (
         await session.execute(
@@ -95,9 +88,9 @@ async def create_vocab(
 
 @router.patch("/vocab/{vocab_id}/suspend")
 async def suspend_vocab(
+    session: SessionDep,
+    user: UserDep,
     vocab_id: UUID,
-    session: SessionDep = ...,  # type: ignore[assignment]
-    user: UserDep = ...,  # type: ignore[assignment]
 ) -> dict[str, bool]:
     review = (
         await session.execute(
@@ -116,9 +109,9 @@ async def suspend_vocab(
 
 @router.delete("/reviews/{vocab_id}", status_code=204)
 async def delete_review(
+    session: SessionDep,
+    user: UserDep,
     vocab_id: UUID,
-    session: SessionDep = ...,  # type: ignore[assignment]
-    user: UserDep = ...,  # type: ignore[assignment]
 ) -> None:
     """Remove the caller's Review for this Vocab Item (remove it from their deck).
     The shared Vocab Item stays — other users keep their own Reviews on it.
