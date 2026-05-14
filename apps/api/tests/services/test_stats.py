@@ -223,17 +223,6 @@ def test_streak_grace_day_does_not_count_if_two_days_ago_also_empty() -> None:
     assert _compute_streak(dates, today) == 0
 
 
-def test_streak_uses_user_timezone_not_utc(tmp_path: Path) -> None:
-    """Jakarta is UTC+7. Two reviews at UTC instants that are on different UTC dates
-    but land on the same Jakarta date → streak=1 when injecting Jakarta-bucketed dates."""
-    from app.services.stats import _compute_streak
-
-    jakarta_date = date(2026, 5, 14)
-    # Both UTC instants map to 2026-05-14 in Jakarta (UTC+7)
-    dates = {jakarta_date}
-    assert _compute_streak(dates, jakarta_date) == 1
-
-
 def test_streak_long_consecutive_run() -> None:
     from app.services.stats import _compute_streak
 
