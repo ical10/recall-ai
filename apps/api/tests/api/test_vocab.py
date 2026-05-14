@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -107,8 +107,22 @@ async def _count(factory: async_sessionmaker[AsyncSession], model: type) -> int:
 # ---------------------------------------------------------------------------
 
 
+def test_get_vocab_requires_authentication(tmp_path: Path) -> None:
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+
+    async def auth_required() -> User:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    app.dependency_overrides[get_current_user] = auth_required
+    with TestClient(app) as c:
+        resp = c.get("/vocab")
+    assert resp.status_code == 401
+
+
 def test_get_vocab_returns_empty_list(tmp_path: Path) -> None:
     app, factory = _make_app(str(tmp_path / "db.sqlite"))
+    user = asyncio.run(_insert_user(factory))
+    app.dependency_overrides[get_current_user] = lambda: user
     with TestClient(app) as c:
         resp = c.get("/vocab")
     assert resp.status_code == 200
@@ -215,6 +229,24 @@ def test_post_vocab_rejects_short_language(tmp_path: Path) -> None:
     app.dependency_overrides[get_current_user] = lambda: user
     with TestClient(app) as c:
         resp = c.post("/vocab", json={"token": "word", "language": "x"})
+    assert resp.status_code == 422
+
+
+def test_post_vocab_rejects_oversized_token(tmp_path: Path) -> None:
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+    user = asyncio.run(_insert_user(factory))
+    app.dependency_overrides[get_current_user] = lambda: user
+    with TestClient(app) as c:
+        resp = c.post("/vocab", json={"token": "x" * 256, "language": "en"})
+    assert resp.status_code == 422
+
+
+def test_post_vocab_rejects_oversized_language(tmp_path: Path) -> None:
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+    user = asyncio.run(_insert_user(factory))
+    app.dependency_overrides[get_current_user] = lambda: user
+    with TestClient(app) as c:
+        resp = c.post("/vocab", json={"token": "ephemeral", "language": "x" * 36})
     assert resp.status_code == 422
 
 

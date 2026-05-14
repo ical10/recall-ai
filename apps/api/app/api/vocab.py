@@ -27,6 +27,7 @@ async def list_vocab(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     session: SessionDep = ...,  # type: ignore[assignment]
+    _user: UserDep = ...,  # type: ignore[assignment]
 ) -> VocabListResponse:
     total = (await session.execute(select(func.count(VocabItem.id)))).scalar_one()
     rows = (
