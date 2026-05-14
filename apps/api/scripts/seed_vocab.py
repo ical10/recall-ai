@@ -63,15 +63,12 @@ async def _upsert_user(
     session: AsyncSession,
     email: str,
     name: str,
-    tz: str,  # noqa: ARG001
+    tz: str,
 ) -> User:
     """Get-or-create a User by email; idempotent.
 
     Used only when --ensure-user is passed — a dev-environment convenience so a
     fresh DB does not need an HTTP request pre-step to create the dev user.
-
-    Note: tz is accepted for forward compatibility with Slice C (which adds
-    User.timezone). It is not persisted until that migration lands.
     """
     user = (await session.execute(select(User).where(User.email == email))).scalar_one_or_none()
     if user is not None:
@@ -80,6 +77,7 @@ async def _upsert_user(
         email=email,
         google_id=f"seed-{email}",
         name=name,
+        timezone=tz,
     )
     session.add(user)
     await session.flush()
@@ -135,7 +133,7 @@ async def main(
         "--user-timezone",
         type=str,
         default="UTC",
-        help="IANA timezone for --ensure-user (stored when Slice C migration lands)",
+        help="IANA timezone for --ensure-user (persisted to User.timezone)",
     )
     args = parser.parse_args()
 
