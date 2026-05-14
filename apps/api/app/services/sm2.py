@@ -2,7 +2,6 @@ from app.models.review import ReviewQuality
 from app.schemas.review import ReviewState, ReviewUpdate
 
 EASE_FLOOR = 1.3
-QUALITY_PASS_THRESHOLD = 3
 HARD_INTERVAL_MULTIPLIER = 1.2
 HARD_EASE_PENALTY = 0.15
 
