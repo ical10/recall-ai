@@ -1,13 +1,4 @@
-import enum
-
 from pydantic import BaseModel, Field
-
-
-class ReviewQuality(enum.IntEnum):
-    AGAIN = 0
-    HARD = 2
-    GOOD = 4
-    EASY = 5
 
 
 class ReviewState(BaseModel):

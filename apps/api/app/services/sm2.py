@@ -1,4 +1,5 @@
-from app.schemas.review import ReviewQuality, ReviewState, ReviewUpdate
+from app.models.review import ReviewQuality
+from app.schemas.review import ReviewState, ReviewUpdate
 
 EASE_FLOOR = 1.3
 QUALITY_PASS_THRESHOLD = 3
