@@ -521,3 +521,116 @@ def test_rate_again_requeues_card_after_delay_elapses(tmp_path: Path) -> None:
             mock_dt.fromisoformat = datetime.fromisoformat
             resp2 = c.get("/review")
         assert "first_requeue" in resp2.text
+
+
+def test_pick_next_skips_resuspended_card(tmp_path: Path) -> None:
+    """Rating a card 'Again' enqueues it. If the Review is suspended before
+    the requeue delay elapses, the cookie path must not surface it.
+    Without the filter fix, the suspended card would be served from the cookie."""
+    from datetime import timedelta
+    from unittest.mock import patch
+
+    from sqlalchemy import update
+
+    from app.api.reviews import AGAIN_REQUEUE_MINUTES
+
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+    user = asyncio.run(_insert_user(factory))
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    t0 = datetime.now(UTC)
+
+    async def setup() -> tuple[uuid.UUID, uuid.UUID]:
+        vi1 = await _insert_vocab(factory, "again_card")
+        vi2 = await _insert_vocab(factory, "fallback_card")
+        r1 = await _insert_review(factory, user.id, vi1.id, due_at=t0 - timedelta(seconds=2))
+        r2 = await _insert_review(factory, user.id, vi2.id, due_at=t0 - timedelta(seconds=1))
+        return r1.id, r2.id
+
+    r1_id, r2_id = asyncio.run(setup())
+
+    with TestClient(app) as c:
+        with patch("app.api.reviews.datetime") as mock_dt:
+            mock_dt.now.return_value = t0
+            mock_dt.fromisoformat = datetime.fromisoformat
+            resp1 = c.post(f"/review/{r1_id}/rate", data={"quality": 0})
+        assert resp1.status_code == 200
+        assert "fallback_card" in resp1.text
+
+        with patch("app.api.reviews.datetime") as mock_dt:
+            mock_dt.now.return_value = t0
+            mock_dt.fromisoformat = datetime.fromisoformat
+            resp1b = c.post(f"/review/{r2_id}/rate", data={"quality": 4})
+        assert resp1b.status_code == 200
+
+        async def suspend_review() -> None:
+            async with factory() as s:
+                await s.execute(update(Review).where(Review.id == r1_id).values(suspended=True))
+                await s.commit()
+
+        asyncio.run(suspend_review())
+
+        t1 = t0 + timedelta(minutes=AGAIN_REQUEUE_MINUTES + 1)
+        with patch("app.api.reviews.datetime") as mock_dt:
+            mock_dt.now.return_value = t1
+            mock_dt.fromisoformat = datetime.fromisoformat
+            resp2 = c.get("/review")
+        assert "All caught up" in resp2.text
+
+
+def test_pick_next_skips_empty_definition_card(tmp_path: Path) -> None:
+    """Rating a card 'Again' enqueues it. If the VocabItem definition becomes empty
+    (Pending state) before the requeue delay elapses, the cookie path must not surface it.
+    Without the filter fix, the pending card would be served from the cookie."""
+    from datetime import timedelta
+    from unittest.mock import patch
+
+    from sqlalchemy import select, update
+
+    from app.api.reviews import AGAIN_REQUEUE_MINUTES
+
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+    user = asyncio.run(_insert_user(factory))
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    t0 = datetime.now(UTC)
+
+    async def setup() -> tuple[uuid.UUID, uuid.UUID]:
+        vi1 = await _insert_vocab(factory, "pending_card", definition="original definition")
+        vi2 = await _insert_vocab(factory, "fallback_card2")
+        r1 = await _insert_review(factory, user.id, vi1.id, due_at=t0 - timedelta(seconds=2))
+        r2 = await _insert_review(factory, user.id, vi2.id, due_at=t0 - timedelta(seconds=1))
+        return r1.id, r2.id
+
+    r1_id, r2_id = asyncio.run(setup())
+
+    with TestClient(app) as c:
+        with patch("app.api.reviews.datetime") as mock_dt:
+            mock_dt.now.return_value = t0
+            mock_dt.fromisoformat = datetime.fromisoformat
+            resp1 = c.post(f"/review/{r1_id}/rate", data={"quality": 0})
+        assert resp1.status_code == 200
+        assert "fallback_card2" in resp1.text
+
+        with patch("app.api.reviews.datetime") as mock_dt:
+            mock_dt.now.return_value = t0
+            mock_dt.fromisoformat = datetime.fromisoformat
+            resp1b = c.post(f"/review/{r2_id}/rate", data={"quality": 4})
+        assert resp1b.status_code == 200
+
+        async def clear_definition() -> None:
+            async with factory() as s:
+                r = (await s.execute(select(Review).where(Review.id == r1_id))).scalar_one()
+                await s.execute(
+                    update(VocabItem).where(VocabItem.id == r.vocab_item_id).values(definition="")
+                )
+                await s.commit()
+
+        asyncio.run(clear_definition())
+
+        t1 = t0 + timedelta(minutes=AGAIN_REQUEUE_MINUTES + 1)
+        with patch("app.api.reviews.datetime") as mock_dt:
+            mock_dt.now.return_value = t1
+            mock_dt.fromisoformat = datetime.fromisoformat
+            resp2 = c.get("/review")
+        assert "All caught up" in resp2.text

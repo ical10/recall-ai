@@ -52,7 +52,12 @@ async def _pick_next_review(
             select(Review)
             .join(Review.vocab_item)
             .options(contains_eager(Review.vocab_item))
-            .where(Review.id == UUID(picked["id"]), Review.user_id == user_id)
+            .where(
+                Review.id == UUID(picked["id"]),
+                Review.user_id == user_id,
+                Review.suspended.is_(False),
+                VocabItem.definition != "",
+            )
         )
         review = (await session.execute(stmt)).scalar_one_or_none()
         if review is not None:
