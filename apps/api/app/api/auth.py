@@ -34,6 +34,24 @@ def _google_consent_url(state: str) -> str:
     return f"{GOOGLE_AUTH_URL}?{query}"
 
 
+async def _exchange_code(code: str) -> dict[str, object]:
+    settings = get_settings()
+    resp = await httpx.AsyncClient().post(
+        GOOGLE_TOKEN_URL,
+        data={
+            "code": code,
+            "client_id": settings.google_client_id,
+            "client_secret": settings.google_client_secret.get_secret_value(),
+            "redirect_uri": settings.google_redirect_uri,
+            "grant_type": "authorization_code",
+        },
+    )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=400, detail="token exchange failed")
+    data: dict[str, object] = resp.json()
+    return data
+
+
 @router.get("/auth/login")
 async def login(request: Request) -> RedirectResponse:
     settings = get_settings()
@@ -62,23 +80,9 @@ async def callback(
     if not code:
         raise HTTPException(status_code=400, detail="missing authorization code")
 
-    settings = get_settings()
-    token_resp = await httpx.AsyncClient().post(
-        GOOGLE_TOKEN_URL,
-        data={
-            "code": code,
-            "client_id": settings.google_client_id,
-            "client_secret": settings.google_client_secret.get_secret_value(),
-            "redirect_uri": settings.google_redirect_uri,
-            "grant_type": "authorization_code",
-        },
-    )
-    if token_resp.status_code != 200:
-        raise HTTPException(status_code=400, detail="token exchange failed")
-
-    token_data = token_resp.json()
+    token_data = await _exchange_code(code)
     id_token = token_data.get("id_token")
-    if not id_token:
+    if not id_token or not isinstance(id_token, str):
         raise HTTPException(status_code=400, detail="no id_token in response")
 
     payload_b64 = id_token.split(".")[1]
