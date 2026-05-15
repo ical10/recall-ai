@@ -23,10 +23,10 @@ GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 
 STARTER_VOCAB = [
-    {"token": "ephemeral", "language": "en"},
-    {"token": "ubiquitous", "language": "en"},
-    {"token": "serendipity", "language": "en"},
-    {"token": "Schadenfreude", "language": "de"},
+    {"token": "ephemeral", "language": "en", "definition": "lasting for a very short time"},
+    {"token": "ubiquitous", "language": "en", "definition": "found everywhere"},
+    {"token": "serendipity", "language": "en", "definition": "happy chance discovery"},
+    {"token": "Schadenfreude", "language": "de", "definition": "joy at others' misfortune"},
 ]
 
 
@@ -77,7 +77,7 @@ async def _seed_starter_vocab(session: AsyncSession, user: User) -> int:
         if existing is not None:
             item = existing
         else:
-            item = VocabItem(token=token, language=language, definition="")
+            item = VocabItem(token=token, language=language, definition=entry.get("definition", ""))
             session.add(item)
             await session.flush()
         review = (
