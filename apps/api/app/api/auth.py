@@ -23,10 +23,18 @@ GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 
 STARTER_VOCAB = [
-    {"token": "ephemeral", "language": "en", "definition": "lasting for a very short time"},
-    {"token": "ubiquitous", "language": "en", "definition": "found everywhere"},
-    {"token": "serendipity", "language": "en", "definition": "happy chance discovery"},
-    {"token": "Schadenfreude", "language": "de", "definition": "joy at others' misfortune"},
+    {"token": "friend", "language": "en", "definition": "a person you like and play with"},
+    {"token": "hungry", "language": "en", "definition": "wanting to eat food"},
+    {"token": "happy", "language": "en", "definition": "feeling good and smiling"},
+    {"token": "morning", "language": "en", "definition": "the early part of the day"},
+    {"token": "family", "language": "en", "definition": "parents, brothers and sisters"},
+    {"token": "school", "language": "en", "definition": "a place where children learn"},
+    {"token": "play", "language": "en", "definition": "to have fun with toys or games"},
+    {"token": "animal", "language": "en", "definition": "a living creature like a dog or cat"},
+    {"token": "rain", "language": "en", "definition": "water that falls from clouds"},
+    {"token": "color", "language": "en", "definition": "red, blue, green and other shades"},
+    {"token": "night", "language": "en", "definition": "the dark time between sunset and sunrise"},
+    {"token": "story", "language": "en", "definition": "a tale that you read or tell"},
 ]
 
 
