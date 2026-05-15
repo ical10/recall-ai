@@ -1,0 +1,9 @@
+<div class="rounded-lg border border-slate-200 bg-white p-6">
+  <p class="text-slate-600">{{ token }} is already in your deck</p>
+  <a
+    hx-get="/vocab/form"
+    hx-target="closest div"
+    hx-swap="outerHTML"
+    class="mt-2 inline-block text-sm text-slate-500 underline hover:text-slate-700"
+  >Add another</a>
+</div>

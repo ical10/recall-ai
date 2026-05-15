@@ -250,6 +250,37 @@ def test_post_vocab_rejects_oversized_language(tmp_path: Path) -> None:
     assert resp.status_code == 422
 
 
+def test_create_vocab_htmx_returns_partial(tmp_path: Path) -> None:
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+    user = asyncio.run(_insert_user(factory))
+    app.dependency_overrides[get_current_user] = lambda: user
+    with TestClient(app) as c:
+        resp = c.post(
+            "/vocab",
+            json={"token": "sagacious", "language": "en"},
+            headers={"HX-Request": "true"},
+        )
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "sagacious" in resp.text
+
+
+def test_create_vocab_htmx_duplicate_shows_exists(tmp_path: Path) -> None:
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+    user = asyncio.run(_insert_user(factory))
+    app.dependency_overrides[get_current_user] = lambda: user
+    with TestClient(app) as c:
+        c.post("/vocab", json={"token": "duplicate-me", "language": "en"})
+        resp = c.post(
+            "/vocab",
+            json={"token": "duplicate-me", "language": "en"},
+            headers={"HX-Request": "true"},
+        )
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "already" in resp.text.lower()
+
+
 # ---------------------------------------------------------------------------
 # PATCH /vocab/{vocab_id}/suspend
 # ---------------------------------------------------------------------------
