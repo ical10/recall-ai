@@ -1,6 +1,14 @@
 [
-  {"token": "ephemeral", "language": "en"},
-  {"token": "ubiquitous", "language": "en"},
-  {"token": "serendipity", "language": "en"},
-  {"token": "Schadenfreude", "language": "de"}
+  {"token": "friend", "language": "en"},
+  {"token": "hungry", "language": "en"},
+  {"token": "happy", "language": "en"},
+  {"token": "morning", "language": "en"},
+  {"token": "family", "language": "en"},
+  {"token": "school", "language": "en"},
+  {"token": "play", "language": "en"},
+  {"token": "animal", "language": "en"},
+  {"token": "rain", "language": "en"},
+  {"token": "color", "language": "en"},
+  {"token": "night", "language": "en"},
+  {"token": "story", "language": "en"}
 ]

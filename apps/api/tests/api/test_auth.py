@@ -306,4 +306,4 @@ def test_callback_seeds_starter_vocab_for_new_user(tmp_path: Path) -> None:
             return len(result.all())
 
     count = asyncio.run(check())
-    assert count == 4
+    assert count == 12
