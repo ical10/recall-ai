@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import Response
 from sqlalchemy import or_, select
 from sqlalchemy.orm import contains_eager
 
@@ -18,25 +18,19 @@ router = APIRouter()
 
 AGAIN_REQUEUE_MINUTES = 10
 AGAIN_QUEUE_KEY = "again_queue"
-REVIEW_LANGUAGE_KEY = "review_language"
 
 
-async def _next_due_review(
-    session: SessionDep, user_id: UUID, now: datetime, language: str | None = None
-) -> Review | None:
-    conditions = [
-        Review.user_id == user_id,
-        Review.suspended.is_(False),
-        VocabItem.definition != "",
-        or_(Review.due_at.is_(None), Review.due_at <= now),
-    ]
-    if language:
-        conditions.append(VocabItem.language == language)
+async def _next_due_review(session: SessionDep, user_id: UUID, now: datetime) -> Review | None:
     stmt = (
         select(Review)
         .join(Review.vocab_item)
         .options(contains_eager(Review.vocab_item))
-        .where(*conditions)
+        .where(
+            Review.user_id == user_id,
+            Review.suspended.is_(False),
+            VocabItem.definition != "",
+            or_(Review.due_at.is_(None), Review.due_at <= now),
+        )
         .order_by(Review.due_at.asc().nulls_first(), Review.created_at.asc())
         .limit(1)
     )
@@ -48,7 +42,6 @@ async def _pick_next_review(
     user_id: UUID,
     now: datetime,
     again_queue: list[dict[str, str]],
-    language: str | None = None,
 ) -> tuple[Review | None, list[dict[str, str]]]:
     ready = [e for e in again_queue if datetime.fromisoformat(e["after"]) <= now]
     pending = [e for e in again_queue if datetime.fromisoformat(e["after"]) > now]
@@ -67,10 +60,10 @@ async def _pick_next_review(
             )
         )
         review = (await session.execute(stmt)).scalar_one_or_none()
-        if review is not None and (not language or review.vocab_item.language == language):
+        if review is not None:
             return review, ready[1:] + pending
-        return await _next_due_review(session, user_id, now, language), ready[1:] + pending
-    return await _next_due_review(session, user_id, now, language), pending
+        return await _next_due_review(session, user_id, now), ready[1:] + pending
+    return await _next_due_review(session, user_id, now), pending
 
 
 @router.get("/review")
@@ -80,10 +73,20 @@ async def review_page(
     user: UserDep,
 ) -> Response:
     now = datetime.now(UTC)
-    language: str | None = request.session.get(REVIEW_LANGUAGE_KEY)
     again_queue: list[dict[str, str]] = request.session.get(AGAIN_QUEUE_KEY, [])
-    review, again_queue = await _pick_next_review(
-        session, user.id, now, again_queue, language=language
+    review, again_queue = await _pick_next_review(session, user.id, now, again_queue)
+    request.session[AGAIN_QUEUE_KEY] = again_queue
+    if review is None:
+        return templates.TemplateResponse(request, "partials/done.html", {"user": user})
+    return templates.TemplateResponse(
+        request,
+        "pages/review.html",
+        {"review": review, "vocab": review.vocab_item, "user": user},
+    )
+    return templates.TemplateResponse(
+        request,
+        "pages/review.html",
+        {"review": review, "vocab": review.vocab_item, "user": user},
     )
     request.session[AGAIN_QUEUE_KEY] = again_queue
     if review is None:
@@ -91,12 +94,7 @@ async def review_page(
     return templates.TemplateResponse(
         request,
         "pages/review.html",
-        {
-            "review": review,
-            "vocab": review.vocab_item,
-            "user": user,
-            "review_language": language,
-        },
+        {"review": review, "vocab": review.vocab_item, "user": user},
     )
 
 
@@ -159,7 +157,6 @@ async def review_rate(
     await session.commit()
 
     again_queue: list[dict[str, str]] = request.session.get(AGAIN_QUEUE_KEY, [])
-    language: str | None = request.session.get(REVIEW_LANGUAGE_KEY)
     again_queue = [e for e in again_queue if e["id"] != str(review_id)]
     if quality_enum == ReviewQuality.AGAIN:
         again_queue.append(
@@ -169,9 +166,7 @@ async def review_rate(
             }
         )
 
-    next_review, again_queue = await _pick_next_review(
-        session, user.id, now, again_queue, language=language
-    )
+    next_review, again_queue = await _pick_next_review(session, user.id, now, again_queue)
     request.session[AGAIN_QUEUE_KEY] = again_queue
     if next_review is None:
         return templates.TemplateResponse(request, "partials/done.html")
@@ -180,14 +175,3 @@ async def review_rate(
         "partials/card.html",
         {"review": next_review, "vocab": next_review.vocab_item},
     )
-
-
-@router.post("/review/language")
-async def set_language(
-    request: Request,
-    language: str = Form(...),
-) -> Response:
-    request.session[REVIEW_LANGUAGE_KEY] = language if language else None
-    if request.headers.get("hx-request"):
-        return Response(status_code=200, headers={"HX-Refresh": "true"})
-    return RedirectResponse(url="/review", status_code=302)

@@ -19,11 +19,8 @@ async def dashboard(
     user: UserDep,
 ) -> Response:
     stats = await compute_user_stats(session, user)
-    review_language = ""
-    if "session" in request.scope:
-        review_language = request.session.get("review_language", "")
     return templates.TemplateResponse(
         request,
         "pages/dashboard.html",
-        {"stats": stats, "user": user, "review_language": review_language},
+        {"stats": stats, "user": user},
     )
