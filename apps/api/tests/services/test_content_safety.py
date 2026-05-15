@@ -2,7 +2,7 @@ import re
 
 import pytest
 
-from app.services.content_safety import contains_disallowed_term
+from app.services.content_safety import contains_disallowed_term, load_denylist
 
 
 def test_contains_disallowed_term_returns_false_for_clean_text() -> None:
@@ -33,3 +33,23 @@ def test_contains_disallowed_term_uses_word_boundaries(monkeypatch: pytest.Monke
     assert cs_module.contains_disallowed_term("asset management") is False
     assert cs_module.contains_disallowed_term("class assignment") is False
     assert cs_module.contains_disallowed_term("ass") is True
+
+
+def test_load_denylist_from_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.services.content_safety as cs_module
+
+    monkeypatch.setenv("CONTENT_DENYLIST", "badword,spam")
+    load_denylist()
+
+    assert cs_module.contains_disallowed_term("this is a badword") is True
+    assert cs_module.contains_disallowed_term("clean text") is False
+
+
+def test_load_denylist_empty_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.services.content_safety as cs_module
+
+    monkeypatch.setenv("CONTENT_DENYLIST", "")
+    load_denylist()
+
+    assert cs_module.contains_disallowed_term("anything") is False
+    assert cs_module.contains_disallowed_term("badword spam") is False

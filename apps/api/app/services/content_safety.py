@@ -1,9 +1,7 @@
+import os
 import re
 
-_DISALLOWED_TERMS: tuple[str, ...] = (
-    # Kept empty in the repo — populate locally from a gitignored file or env-driven
-    # loader before going live. See ADR-0007.
-)
+_DISALLOWED_TERMS: tuple[str, ...] = ()
 
 
 def _compile_pattern(terms: tuple[str, ...]) -> "re.Pattern[str] | None":
@@ -13,7 +11,20 @@ def _compile_pattern(terms: tuple[str, ...]) -> "re.Pattern[str] | None":
     return re.compile(rf"\b(?:{'|'.join(escaped)})\b", flags=re.IGNORECASE)
 
 
-_PATTERN = _compile_pattern(_DISALLOWED_TERMS)
+_PATTERN: "re.Pattern[str] | None" = None
+
+
+def load_denylist() -> None:
+    global _PATTERN
+    raw = os.environ.get("CONTENT_DENYLIST", "")
+    if not raw:
+        _PATTERN = None
+        return
+    terms = tuple(t.strip() for t in raw.split(",") if t.strip())
+    _PATTERN = _compile_pattern(terms)
+
+
+load_denylist()
 
 
 def contains_disallowed_term(text: str) -> bool:
