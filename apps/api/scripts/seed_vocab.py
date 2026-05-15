@@ -3,8 +3,8 @@
 Usage:
   python -m scripts.seed_vocab path/to/seed.json
   python -m scripts.seed_vocab path/to/seed.csv --csv
-  python -m scripts.seed_vocab seed.json --create-reviews-for dev@local
-  python -m scripts.seed_vocab seed.json --create-reviews-for dev@local --ensure-user \
+  python -m scripts.seed_vocab seed.json --create-reviews-for user@example.com
+  python -m scripts.seed_vocab seed.json --create-reviews-for user@example.com --ensure-user \
       --user-name Dev --user-timezone UTC
 """
 

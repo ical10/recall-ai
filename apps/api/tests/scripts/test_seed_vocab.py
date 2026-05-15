@@ -21,6 +21,8 @@ from app.models.review import Review
 from app.models.user import User
 from app.models.vocab_item import VocabItem
 
+TEST_USER_EMAIL = "test@example.com"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -122,21 +124,21 @@ def test_seed_vocab_csv_format(tmp_path: Path) -> None:
 
 def test_seed_vocab_creates_due_reviews_when_flag_set(tmp_path: Path) -> None:
     factory = _make_factory(str(tmp_path / "db.sqlite"))
-    asyncio.run(_seed_user(factory, "dev@local"))
+    asyncio.run(_seed_user(factory, TEST_USER_EMAIL))
     seed_file = tmp_path / "seed.json"
     seed_file.write_text(
         json.dumps([{"token": "zap", "language": "en"}, {"token": "zip", "language": "en"}])
     )
-    _run_seed([str(seed_file), "--create-reviews-for", "dev@local"], factory)
+    _run_seed([str(seed_file), "--create-reviews-for", TEST_USER_EMAIL], factory)
     assert asyncio.run(_count_reviews(factory)) == 2
 
 
 def test_seed_vocab_due_reviews_have_past_or_present_due_at(tmp_path: Path) -> None:
     factory = _make_factory(str(tmp_path / "db.sqlite"))
-    asyncio.run(_seed_user(factory, "dev@local"))
+    asyncio.run(_seed_user(factory, TEST_USER_EMAIL))
     seed_file = tmp_path / "seed.json"
     seed_file.write_text(json.dumps([{"token": "now_word", "language": "en"}]))
-    _run_seed([str(seed_file), "--create-reviews-for", "dev@local"], factory)
+    _run_seed([str(seed_file), "--create-reviews-for", TEST_USER_EMAIL], factory)
 
     async def check_due() -> bool:
         async with factory() as s:
@@ -176,7 +178,7 @@ def test_seed_vocab_ensure_user_upserts_missing_user(tmp_path: Path) -> None:
         [
             str(seed_file),
             "--create-reviews-for",
-            "dev@local",
+            TEST_USER_EMAIL,
             "--ensure-user",
             "--user-name",
             "Dev",
@@ -198,11 +200,11 @@ def test_seed_vocab_ensure_user_upserts_missing_user(tmp_path: Path) -> None:
 
 def test_seed_vocab_ensure_user_is_idempotent(tmp_path: Path) -> None:
     factory = _make_factory(str(tmp_path / "db.sqlite"))
-    asyncio.run(_seed_user(factory, "dev@local"))
+    asyncio.run(_seed_user(factory, TEST_USER_EMAIL))
     seed_file = tmp_path / "seed.json"
     seed_file.write_text(json.dumps([{"token": "dup", "language": "en"}]))
     _run_seed(
-        [str(seed_file), "--create-reviews-for", "dev@local", "--ensure-user"],
+        [str(seed_file), "--create-reviews-for", TEST_USER_EMAIL, "--ensure-user"],
         factory,
     )
     assert asyncio.run(_count_users(factory)) == 1
