@@ -1,9 +1,9 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.middleware.sessions import SessionMiddleware
@@ -18,7 +18,7 @@ STATIC_CACHE_MAX_AGE = 300
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     yield
     await engine.dispose()
 
@@ -43,6 +43,12 @@ def create_app() -> FastAPI:
         if request.url.path.startswith("/static/") and response.status_code == 200:
             response.headers["Cache-Control"] = f"public, max-age={STATIC_CACHE_MAX_AGE}"
         return response
+
+    @app.exception_handler(401)
+    async def unauthenticated_handler(request: Request, _exc: Exception) -> Response:
+        if request.headers.get("hx-request"):
+            return Response(status_code=401, headers={"HX-Redirect": "/auth/login-page"})
+        return RedirectResponse(url="/auth/login-page", status_code=302)
 
     @app.get("/healthz")
     async def healthz() -> JSONResponse:

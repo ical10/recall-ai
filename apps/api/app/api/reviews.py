@@ -77,11 +77,11 @@ async def review_page(
     review, again_queue = await _pick_next_review(session, user.id, now, again_queue)
     request.session[AGAIN_QUEUE_KEY] = again_queue
     if review is None:
-        return templates.TemplateResponse(request, "partials/done.html")
+        return templates.TemplateResponse(request, "partials/done.html", {"user": user})
     return templates.TemplateResponse(
         request,
         "pages/review.html",
-        {"review": review, "vocab": review.vocab_item},
+        {"review": review, "vocab": review.vocab_item, "user": user},
     )
 
 

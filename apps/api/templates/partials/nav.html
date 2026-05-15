@@ -1,0 +1,15 @@
+<nav class="border-b border-gray-200 bg-white">
+  <div class="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
+    <a href="/dashboard" class="text-lg font-semibold text-gray-800 hover:text-gray-600">
+      RecallAI
+    </a>
+    <div>
+      {% if user %}
+      <span class="mr-4 text-sm text-gray-600">{{ user.name }}</span>
+      <a href="/auth/logout" class="text-sm text-gray-500 hover:text-gray-800">Logout</a>
+      {% else %}
+      <a href="/auth/login-page" class="text-sm text-gray-500 hover:text-gray-800">Login</a>
+      {% endif %}
+    </div>
+  </div>
+</nav>
