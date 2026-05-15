@@ -3,11 +3,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from sqlalchemy import delete, func, select
 from sqlalchemy.engine import CursorResult
 
-from app.api.deps import SessionDep, UserDep
+from app.api.deps import SessionDep, UserDep, templates
 from app.models.review import Review
 from app.models.vocab_item import VocabItem
 from app.schemas.vocab import VocabCreate, VocabListResponse, VocabRead
@@ -43,13 +43,14 @@ async def list_vocab(
     )
 
 
-@router.post("/vocab", status_code=201)
+@router.post("/vocab", status_code=201, response_model=None)
 async def create_vocab(
+    request: Request,
     session: SessionDep,
     user: UserDep,
     body: VocabCreate,
     response: Response,
-) -> VocabRead:
+) -> VocabRead | Response:
     existing = (
         await session.execute(
             select(VocabItem).where(
@@ -58,9 +59,16 @@ async def create_vocab(
             )
         )
     ).scalar_one_or_none()
+    is_htmx = request.headers.get("hx-request")
     if existing is not None:
         item = existing
         response.status_code = 200
+        if is_htmx:
+            return templates.TemplateResponse(
+                request,
+                "partials/vocab-exists.html",
+                {"token": item.token},
+            )
     else:
         item = VocabItem(token=body.token, language=body.language, definition="")
         session.add(item)
@@ -83,7 +91,18 @@ async def create_vocab(
         )
     await session.commit()
     await session.refresh(item)
+    if is_htmx:
+        return templates.TemplateResponse(
+            request,
+            "partials/vocab-added.html",
+            {"token": item.token},
+        )
     return VocabRead.model_validate(item)
+
+
+@router.get("/vocab/form")
+async def vocab_form(request: Request) -> Response:
+    return templates.TemplateResponse(request, "partials/vocab-form.html")
 
 
 @router.patch("/vocab/{vocab_id}/suspend")
