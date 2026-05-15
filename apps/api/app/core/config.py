@@ -15,8 +15,9 @@ class Settings(BaseSettings):
     secret_key: SecretStr
     google_client_id: str = ""
     google_client_secret: SecretStr = SecretStr("")
+    google_redirect_uri: str = "http://localhost:8000/auth/callback"
 
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return Settings()  # pyright: ignore[reportCallIssue]
