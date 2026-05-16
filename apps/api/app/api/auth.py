@@ -71,12 +71,35 @@ async def _exchange_code(code: str) -> dict[str, object]:
     return data
 
 
+async def _heal_starter_vocab_definitions(session: AsyncSession) -> int:
+    healed = 0
+    for entry in STARTER_VOCAB:
+        canonical = entry.get("definition", "")
+        if not canonical:
+            continue
+        item = (
+            await session.execute(
+                select(VocabItem).where(
+                    VocabItem.token == entry["token"],
+                    VocabItem.language == entry["language"],
+                )
+            )
+        ).scalar_one_or_none()
+        if item is not None and not item.definition:
+            item.definition = canonical
+            healed += 1
+    if healed:
+        await session.commit()
+    return healed
+
+
 async def _seed_starter_vocab(session: AsyncSession, user: User) -> int:
     created = 0
     now = datetime.now(UTC)
     for entry in STARTER_VOCAB:
         token = entry["token"]
         language = entry["language"]
+        canonical_definition = entry.get("definition", "")
         existing = (
             await session.execute(
                 select(VocabItem).where(VocabItem.token == token, VocabItem.language == language)
@@ -84,8 +107,10 @@ async def _seed_starter_vocab(session: AsyncSession, user: User) -> int:
         ).scalar_one_or_none()
         if existing is not None:
             item = existing
+            if not item.definition and canonical_definition:
+                item.definition = canonical_definition
         else:
-            item = VocabItem(token=token, language=language, definition=entry.get("definition", ""))
+            item = VocabItem(token=token, language=language, definition=canonical_definition)
             session.add(item)
             await session.flush()
         review = (
@@ -96,8 +121,7 @@ async def _seed_starter_vocab(session: AsyncSession, user: User) -> int:
         if review is None:
             session.add(Review(user_id=user.id, vocab_item_id=item.id, due_at=now))
             created += 1
-    if created:
-        await session.commit()
+    await session.commit()
     return created
 
 
@@ -169,6 +193,8 @@ async def callback(
     ).scalar_one_or_none()
     if is_new or existing_review_id is None:
         await _seed_starter_vocab(session, user)
+    else:
+        await _heal_starter_vocab_definitions(session)
     request.session["user_id"] = str(user.id)
     return RedirectResponse(url="/dashboard", status_code=307)
 

@@ -219,6 +219,26 @@ def test_seed_vocab_ensure_user_without_create_reviews_for_errors(tmp_path: Path
         _run_seed([str(seed_file), "--ensure-user"], factory)
 
 
+def test_seed_vocab_writes_definition_from_row(tmp_path: Path) -> None:
+    """seed_vocab must persist row['definition'] so dashboards that filter on
+    definition!='' do not hide seeded cards (regression for empty-definition
+    starter vocab created by dev_reset).
+    """
+    factory = _make_factory(str(tmp_path / "db.sqlite"))
+    seed_file = tmp_path / "seed.json"
+    seed_file.write_text(
+        json.dumps([{"token": "friend", "language": "en", "definition": "a person you like"}])
+    )
+    _run_seed([str(seed_file)], factory)
+
+    async def fetch_def() -> str:
+        async with factory() as s:
+            v = (await s.execute(select(VocabItem))).scalar_one()
+            return v.definition
+
+    assert asyncio.run(fetch_def()) == "a person you like"
+
+
 def test_seed_vocab_skips_blank_language_rows(tmp_path: Path) -> None:
     factory = _make_factory(str(tmp_path / "db.sqlite"))
     seed_file = tmp_path / "seed.json"
