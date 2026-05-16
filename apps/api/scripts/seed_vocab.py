@@ -42,6 +42,7 @@ async def _upsert_vocab(session: AsyncSession, rows: list[dict[str, str]]) -> li
     for row in rows:
         token = row.get("token", "").strip()
         language = row.get("language", "").strip()
+        definition = row.get("definition", "").strip()
         if not token or not language:
             continue
         existing = (
@@ -52,7 +53,7 @@ async def _upsert_vocab(session: AsyncSession, rows: list[dict[str, str]]) -> li
         if existing:
             items.append(existing)
             continue
-        item = VocabItem(token=token, language=language, definition="")
+        item = VocabItem(token=token, language=language, definition=definition)
         session.add(item)
         await session.flush()
         items.append(item)

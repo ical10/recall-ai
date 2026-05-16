@@ -361,6 +361,112 @@ def test_callback_does_not_reseed_existing_user_with_reviews(tmp_path: Path) -> 
     assert count == 1
 
 
+def test_callback_heals_empty_definitions_on_returning_user_with_reviews(
+    tmp_path: Path,
+) -> None:
+    """A returning user whose existing Reviews point at empty-definition
+    starter VocabItems must have those definitions healed on next login.
+    Otherwise the dashboard's definition!='' filter keeps hiding their cards.
+    """
+    _setup_env()
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+
+    from app.api.auth import STARTER_VOCAB
+    from app.models.vocab_item import VocabItem
+
+    async def preseed_user_with_bad_reviews() -> None:
+        async with factory() as s:
+            user = User(
+                email="returning@b.com",
+                google_id="sub-returning",
+                name="Returning",
+            )
+            s.add(user)
+            await s.flush()
+            for entry in STARTER_VOCAB:
+                item = VocabItem(token=entry["token"], language=entry["language"], definition="")
+                s.add(item)
+                await s.flush()
+                s.add(Review(user_id=user.id, vocab_item_id=item.id))
+            await s.commit()
+
+    asyncio.run(preseed_user_with_bad_reviews())
+
+    with (
+        patch("app.api.auth._exchange_code", new_callable=AsyncMock) as mock_exchange,
+        patch("secrets.token_urlsafe", return_value=TEST_STATE),
+        TestClient(app) as c,
+    ):
+        mock_exchange.return_value = {
+            "id_token": _fake_id_token("sub-returning", "returning@b.com", "Returning"),
+        }
+        login_resp = c.get("/auth/login", follow_redirects=False)
+        cookies = login_resp.cookies
+        c.get(
+            f"/auth/callback?code=c&state={TEST_STATE}",
+            cookies=cookies,
+        )
+
+    async def empty_def_count() -> int:
+        async with factory() as s:
+            result = await s.execute(select(VocabItem).where(VocabItem.definition == ""))
+            return len(result.all())
+
+    assert asyncio.run(empty_def_count()) == 0
+
+
+def test_callback_heals_empty_definitions_on_existing_starter_vocab_items(
+    tmp_path: Path,
+) -> None:
+    """If starter-token VocabItems already exist with empty definitions
+    (e.g. created by scripts/seed_vocab.py during dev_reset), the auth
+    callback must populate them from the canonical STARTER_VOCAB so the
+    dashboard's definition!='' filter does not hide the new user's cards.
+    """
+    _setup_env()
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+
+    from app.api.auth import STARTER_VOCAB
+    from app.models.vocab_item import VocabItem
+
+    async def preseed_empty_vocab_items() -> None:
+        async with factory() as s:
+            for entry in STARTER_VOCAB:
+                s.add(VocabItem(token=entry["token"], language=entry["language"], definition=""))
+            await s.commit()
+
+    asyncio.run(preseed_empty_vocab_items())
+
+    with (
+        patch("app.api.auth._exchange_code", new_callable=AsyncMock) as mock_exchange,
+        patch("secrets.token_urlsafe", return_value=TEST_STATE),
+        TestClient(app) as c,
+    ):
+        mock_exchange.return_value = {
+            "id_token": _fake_id_token("sub-heal", "heal@b.com", "Heal"),
+        }
+        login_resp = c.get("/auth/login", follow_redirects=False)
+        cookies = login_resp.cookies
+        c.get(
+            f"/auth/callback?code=c&state={TEST_STATE}",
+            cookies=cookies,
+        )
+
+    async def empty_def_count() -> int:
+        async with factory() as s:
+            tokens = [e["token"] for e in STARTER_VOCAB]
+            result = await s.execute(
+                select(VocabItem).where(
+                    VocabItem.token.in_(tokens),
+                    VocabItem.language == "en",
+                    VocabItem.definition == "",
+                )
+            )
+            return len(result.all())
+
+    assert asyncio.run(empty_def_count()) == 0
+
+
 def test_callback_backfills_starter_vocab_for_existing_user_with_no_reviews(
     tmp_path: Path,
 ) -> None:
