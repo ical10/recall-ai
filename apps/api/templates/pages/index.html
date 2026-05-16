@@ -1,7 +1,96 @@
 {% extends "base.html" %}
 {% block content %}
-<main class="mx-auto max-w-2xl p-8">
-  <h1 class="text-3xl font-semibold">RecallAI</h1>
-  <p class="mt-2 text-gray-600">Spaced-repetition vocabulary trainer.</p>
+<main class="relative mx-auto max-w-5xl px-6 pb-24 pt-10">
+
+  <section class="grid gap-10 pt-8 md:grid-cols-5 md:items-center md:gap-6">
+    <div class="md:col-span-3">
+      <span class="chip">
+        <span class="inline-block h-1.5 w-1.5 rounded-full bg-teal"></span>
+        Spaced repetition · for ESL
+      </span>
+      <h1 class="mt-6 font-display text-6xl font-black leading-[0.95] tracking-tight md:text-7xl">
+        Words that
+        <span class="marker">stick</span>.
+        <br />
+        Memory that
+        <span class="marker marker--teal">grows</span>.
+      </h1>
+      <p class="mt-6 max-w-xl text-lg leading-relaxed text-ink-soft">
+        A pocket-sized vocabulary trainer that learns how you forget — then
+        feeds you the right word at exactly the right moment.
+      </p>
+      <div class="mt-8 flex flex-wrap items-center gap-4">
+        <a href="/auth/login-page" class="btn-pop btn-pop--primary text-base">
+          Start learning
+          <span aria-hidden="true">→</span>
+        </a>
+        <a href="/dashboard" class="btn-pop btn-pop--ghost text-base">
+          See the deck
+        </a>
+      </div>
+
+      <div class="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm font-medium text-ink-mute">
+        <span class="inline-flex items-center gap-2">
+          <span class="inline-block h-2 w-2 rounded-full bg-tangerine"></span>
+          LLM-crafted examples
+        </span>
+        <span class="inline-flex items-center gap-2">
+          <span class="inline-block h-2 w-2 rounded-full bg-teal"></span>
+          SM-2 scheduling
+        </span>
+        <span class="inline-flex items-center gap-2">
+          <span class="inline-block h-2 w-2 rounded-full bg-sky"></span>
+          Daily nudges
+        </span>
+      </div>
+    </div>
+
+    <div class="relative md:col-span-2">
+      <div class="card-paper--lg tilt-r animate-pop-in">
+        <span class="washi -top-3 left-8 tilt-l-2"></span>
+        <p class="font-mono text-xs uppercase tracking-widest text-ink-mute">English · Adv.</p>
+        <h2 class="mt-3 font-display text-5xl font-black leading-none">ephemeral</h2>
+        <p class="mt-4 leading-snug text-ink-soft">
+          Lasting for a very short time.
+        </p>
+        <p class="mt-3 italic leading-snug text-ink-mute">
+          "The cherry blossoms are <span class="marker">ephemeral</span> — gone in a week."
+        </p>
+        <div class="mt-5 grid grid-cols-4 gap-1.5">
+          <span class="rounded-lg border-2 border-ink bg-berry py-1.5 text-center text-[11px] font-bold text-cream-50">Again</span>
+          <span class="rounded-lg border-2 border-ink bg-honey py-1.5 text-center text-[11px] font-bold text-ink">Hard</span>
+          <span class="rounded-lg border-2 border-ink bg-teal py-1.5 text-center text-[11px] font-bold text-cream-50">Good</span>
+          <span class="rounded-lg border-2 border-ink bg-sky py-1.5 text-center text-[11px] font-bold text-cream-50">Easy</span>
+        </div>
+      </div>
+
+      <div class="card-paper tilt-l absolute -bottom-6 -left-2 hidden w-44 sm:block">
+        <span class="washi washi--teal -top-3 left-6 tilt-r-2"></span>
+        <p class="font-mono text-[10px] uppercase tracking-widest text-ink-mute">Streak</p>
+        <p class="mt-1 font-display text-4xl font-black leading-none">12<span class="text-honey">·</span></p>
+        <p class="mt-1 text-xs font-medium text-ink-mute">days in a row</p>
+      </div>
+
+      <div aria-hidden="true" class="absolute -right-4 -top-6 h-12 w-12 animate-sparkle rounded-full bg-honey/60 blur-sm"></div>
+    </div>
+  </section>
+
+  <section class="mt-28 grid gap-5 sm:grid-cols-3">
+    {% set features = [
+      ("Pull",  "We surface the cards you're closest to forgetting — never the easy ones.", "tangerine"),
+      ("Pace",  "An SM-2 cadence that bends to how your memory actually works.",            "teal"),
+      ("Polish","Every word ships with an example sentence written for context.",           "sky")
+    ] %}
+    {% for label, body, color in features %}
+    <article class="card-paper {% if loop.index == 2 %}tilt-r{% else %}tilt-l{% endif %}">
+      <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl border-2 border-ink bg-{{ color }}{% if color == 'honey' %}{% endif %} font-display text-lg font-black {% if color == 'honey' %}text-ink{% else %}text-cream-50{% endif %}">
+        {{ loop.index }}
+      </span>
+      <h3 class="mt-4 font-display text-2xl font-black tracking-tight">{{ label }}</h3>
+      <p class="mt-2 leading-snug text-ink-soft">{{ body }}</p>
+    </article>
+    {% endfor %}
+  </section>
+
 </main>
 {% endblock %}

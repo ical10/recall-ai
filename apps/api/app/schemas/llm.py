@@ -27,3 +27,7 @@ class SimpleVocabExample(LLMOutput):
             if contains_disallowed_term(value):
                 raise ValueError(f"{field_name} contains a disallowed term")
         return self
+
+
+class GeneratedVocabBatch(LLMOutput):
+    items: list[SimpleVocabExample] = Field(min_length=1, max_length=20)

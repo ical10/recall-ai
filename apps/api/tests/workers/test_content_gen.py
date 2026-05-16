@@ -9,10 +9,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models.base import Base
+from app.models.review import Review
+from app.models.user import User
 from app.models.vocab_item import VocabItem
-from app.schemas.llm import SimpleVocabExample
+from app.schemas.llm import GeneratedVocabBatch, SimpleVocabExample
 from app.services.llm import LLMValidationFailure
-from app.workers.content_gen import _run_daily
+from app.workers.content_gen import _generate_personalized, _generate_shared_pool, _run_daily
 
 
 @pytest.fixture()
@@ -258,3 +260,212 @@ def test_run_daily_logs_content_gen_item_failed_on_failure(
     assert getattr(r, "vocab_item_id", None) == item_id
     assert getattr(r, "attempts", None) == 3
     assert getattr(r, "total_attempts", None) == 1
+
+
+def _user(*, email: str, google_id: str) -> User:
+    return User(
+        id=uuid.uuid4(),
+        email=email,
+        google_id=google_id,
+        name=email.split("@")[0],
+        avatar_url=None,
+    )
+
+
+def _batch(tokens: list[str]) -> GeneratedVocabBatch:
+    return GeneratedVocabBatch(
+        items=[
+            SimpleVocabExample(
+                token=t,
+                definition=f"A definition for {t} that meets length.",
+                example=f"The {t} appeared on the page clearly.",
+            )
+            for t in tokens
+        ]
+    )
+
+
+def test_generate_personalized_skips_when_milestone_already_serviced(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    target_id: uuid.UUID | None = None
+
+    async def _seed() -> None:
+        nonlocal target_id
+        async with session_factory() as s:
+            target = _user(email="t@b.com", google_id="gt")
+            target.last_personalized_milestone = 30
+            s.add(target)
+            await s.flush()
+            now = datetime.now(UTC)
+            for i in range(30):
+                v = VocabItem(
+                    id=uuid.uuid4(),
+                    token=f"w{i}",
+                    language="en",
+                    definition="A definition long enough to clear the schema.",
+                    example_sentence=f"The w{i} word appears.",
+                )
+                s.add(v)
+                await s.flush()
+                s.add(Review(user_id=target.id, vocab_item_id=v.id, last_reviewed_at=now))
+            await s.commit()
+            target_id = target.id
+
+    asyncio.run(_seed())
+    assert target_id is not None
+
+    with (
+        patch("app.workers.content_gen.SessionLocal", session_factory),
+        patch("app.workers.content_gen.LLMClient") as mock_cls,
+    ):
+        result = asyncio.run(_generate_personalized(user_id=str(target_id), count=5))
+        mock_cls.assert_not_called()
+
+    assert result["skipped"] == "already_fired_for_milestone"
+    assert result["milestone"] == 30
+
+
+def test_generate_personalized_returns_graceful_failure_on_validation_exhausted(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    target_id: uuid.UUID | None = None
+
+    async def _seed() -> None:
+        nonlocal target_id
+        async with session_factory() as s:
+            t = _user(email="t@b.com", google_id="gt")
+            s.add(t)
+            await s.commit()
+            target_id = t.id
+
+    asyncio.run(_seed())
+    assert target_id is not None
+
+    with (
+        patch("app.workers.content_gen.SessionLocal", session_factory),
+        patch("app.workers.content_gen.LLMClient") as mock_cls,
+    ):
+        mock_cls.return_value.complete.side_effect = LLMValidationFailure(
+            "fail", attempts=3, last_error=None
+        )
+        result = asyncio.run(_generate_personalized(user_id=str(target_id), count=5))
+
+    assert result == {"succeeded": 0, "failed": 1, "reason": "validation_exhausted"}
+
+
+def test_generate_personalized_enrolls_only_target_user(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    target_id: uuid.UUID | None = None
+
+    async def _seed() -> None:
+        nonlocal target_id
+        async with session_factory() as s:
+            target = _user(email="t@b.com", google_id="gt")
+            other = _user(email="o@b.com", google_id="go")
+            s.add(target)
+            s.add(other)
+            await s.commit()
+            target_id = target.id
+
+    asyncio.run(_seed())
+    assert target_id is not None
+
+    with (
+        patch("app.workers.content_gen.SessionLocal", session_factory),
+        patch("app.workers.content_gen.LLMClient") as mock_cls,
+    ):
+        mock_cls.return_value.complete.return_value = _batch(["apple", "banana"])
+        result = asyncio.run(_generate_personalized(user_id=str(target_id), count=2))
+
+    assert result["vocab_created"] == 2
+    assert result["reviews_created"] == 2
+
+    async def _check() -> None:
+        async with session_factory() as s:
+            vocab = (await s.execute(select(VocabItem))).scalars().all()
+            assert {v.token for v in vocab} == {"apple", "banana"}
+            assert all(v.source == "personalized" for v in vocab)
+            reviews = (await s.execute(select(Review))).scalars().all()
+            assert {r.user_id for r in reviews} == {target_id}
+
+    asyncio.run(_check())
+
+
+def test_generate_shared_pool_skips_when_already_ran_today(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async def _seed() -> None:
+        async with session_factory() as s:
+            s.add(
+                VocabItem(
+                    id=uuid.uuid4(),
+                    token="already-here",
+                    language="en",
+                    definition="A definition long enough to clear validation.",
+                    example_sentence="The already-here token appears in this example.",
+                    source="shared_pool",
+                )
+            )
+            await s.commit()
+
+    asyncio.run(_seed())
+
+    with (
+        patch("app.workers.content_gen.SessionLocal", session_factory),
+        patch("app.workers.content_gen.LLMClient") as mock_cls,
+    ):
+        result = asyncio.run(_generate_shared_pool(count=10))
+        mock_cls.assert_not_called()
+
+    assert result == {"skipped": "already_ran_today"}
+
+
+def test_generate_shared_pool_returns_graceful_failure_on_validation_exhausted(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    with (
+        patch("app.workers.content_gen.SessionLocal", session_factory),
+        patch("app.workers.content_gen.LLMClient") as mock_cls,
+    ):
+        mock_cls.return_value.complete.side_effect = LLMValidationFailure(
+            "fail", attempts=3, last_error=None
+        )
+        # Must NOT raise; the task body catches and returns a graceful dict so
+        # Celery does not retry on a deterministically broken prompt.
+        result = asyncio.run(_generate_shared_pool(count=2))
+
+    assert result == {"succeeded": 0, "failed": 1, "reason": "validation_exhausted"}
+
+
+def test_generate_shared_pool_inserts_vocab_and_enrolls_all_users(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async def _seed() -> None:
+        async with session_factory() as s:
+            s.add(_user(email="a@b.com", google_id="ga"))
+            s.add(_user(email="c@d.com", google_id="gc"))
+            await s.commit()
+
+    asyncio.run(_seed())
+
+    with (
+        patch("app.workers.content_gen.SessionLocal", session_factory),
+        patch("app.workers.content_gen.LLMClient") as mock_cls,
+    ):
+        mock_cls.return_value.complete.return_value = _batch(["apple", "banana", "cherry"])
+        result = asyncio.run(_generate_shared_pool(count=3))
+
+    assert result["vocab_created"] == 3
+    assert result["reviews_created"] == 6
+
+    async def _check() -> None:
+        async with session_factory() as s:
+            vocab = (await s.execute(select(VocabItem))).scalars().all()
+            assert {v.token for v in vocab} == {"apple", "banana", "cherry"}
+            assert all(v.source == "shared_pool" for v in vocab)
+            reviews = (await s.execute(select(Review))).scalars().all()
+            assert len(reviews) == 6
+
+    asyncio.run(_check())

@@ -22,3 +22,4 @@ class VocabItem(Base, TimestampMixin):
     last_enrichment_attempted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    source: Mapped[str] = mapped_column(String(32), nullable=False, server_default="user")

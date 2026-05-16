@@ -1,7 +1,28 @@
 {% extends "base.html" %}
-{% block title %}Review — RecallAI{% endblock %}
+{% block title %}Review · Recall{% endblock %}
 {% block content %}
-<main class="max-w-xl mx-auto px-4 py-12">
-  {% include "partials/card.html" %}
+<main class="relative mx-auto max-w-2xl px-6 pb-24 pt-4">
+
+  <div class="mb-6 flex items-center justify-between">
+    <a href="/dashboard" class="inline-flex items-center gap-1.5 text-sm font-semibold text-ink-mute hover:text-ink">
+      <span aria-hidden="true">←</span> Deck
+    </a>
+    <span class="chip">
+      <span class="inline-block h-1.5 w-1.5 rounded-full bg-tangerine"></span>
+      Review session
+    </span>
+  </div>
+
+  <span aria-hidden="true" class="pointer-events-none absolute -left-6 top-32 h-24 w-24 -rotate-12 rounded-3xl bg-tangerine/15 blur-2xl"></span>
+  <span aria-hidden="true" class="pointer-events-none absolute right-0 top-64 h-32 w-32 rotate-12 rounded-full bg-teal/15 blur-2xl"></span>
+
+  <div class="perspective-card">
+    {% if review %}
+      {% include "partials/card.html" %}
+    {% else %}
+      {% include "partials/done.html" %}
+    {% endif %}
+  </div>
+
 </main>
 {% endblock %}

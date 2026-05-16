@@ -1,18 +1,23 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import Response
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import contains_eager
 
 from app.api.deps import SessionDep, UserDep, templates
+from app.core.celery_app import celery_app
 from app.models.review import Review, ReviewQuality
 from app.models.vocab_item import VocabItem
 from app.schemas.review import ReviewState
 from app.services.sm2 import compute_next_review
+
+logger = logging.getLogger(__name__)
+PERSONALIZED_MILESTONE_INTERVAL = 30
 
 router = APIRouter()
 
@@ -76,25 +81,14 @@ async def review_page(
     again_queue: list[dict[str, str]] = request.session.get(AGAIN_QUEUE_KEY, [])
     review, again_queue = await _pick_next_review(session, user.id, now, again_queue)
     request.session[AGAIN_QUEUE_KEY] = again_queue
-    if review is None:
-        return templates.TemplateResponse(request, "partials/done.html", {"user": user})
     return templates.TemplateResponse(
         request,
         "pages/review.html",
-        {"review": review, "vocab": review.vocab_item, "user": user},
-    )
-    return templates.TemplateResponse(
-        request,
-        "pages/review.html",
-        {"review": review, "vocab": review.vocab_item, "user": user},
-    )
-    request.session[AGAIN_QUEUE_KEY] = again_queue
-    if review is None:
-        return templates.TemplateResponse(request, "partials/done.html", {"user": user})
-    return templates.TemplateResponse(
-        request,
-        "pages/review.html",
-        {"review": review, "vocab": review.vocab_item, "user": user},
+        {
+            "review": review,
+            "vocab": review.vocab_item if review is not None else None,
+            "user": user,
+        },
     )
 
 
@@ -155,6 +149,28 @@ async def review_rate(
     review.last_reviewed_at = now
     review.due_at = now + timedelta(days=update.interval_days)
     await session.commit()
+
+    total_completed = (
+        await session.execute(
+            select(func.count(Review.id)).where(
+                Review.user_id == user.id, Review.last_reviewed_at.is_not(None)
+            )
+        )
+    ).scalar_one()
+    if total_completed > 0 and total_completed % PERSONALIZED_MILESTONE_INTERVAL == 0:
+        try:
+            celery_app.send_task(
+                "content_gen.generate_personalized",
+                kwargs={"user_id": str(user.id)},
+            )
+        except Exception:
+            # Why: an enqueue failure (Redis down, broker unreachable) must NOT
+            # 500 the rate endpoint - the user can still rate; the milestone will
+            # fire again on the next multiple-of-30 if Redis recovers.
+            logger.exception(
+                "milestone_enqueue_failed",
+                extra={"user_id": str(user.id), "milestone": int(total_completed)},
+            )
 
     again_queue: list[dict[str, str]] = request.session.get(AGAIN_QUEUE_KEY, [])
     again_queue = [e for e in again_queue if e["id"] != str(review_id)]
