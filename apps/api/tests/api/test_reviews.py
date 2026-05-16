@@ -634,3 +634,151 @@ def test_pick_next_skips_empty_definition_card(tmp_path: Path) -> None:
             mock_dt.fromisoformat = datetime.fromisoformat
             resp2 = c.get("/review")
         assert "All caught up" in resp2.text
+
+
+def test_rate_enqueues_personalized_at_30th_completed_review(tmp_path: Path) -> None:
+    from unittest.mock import patch as _patch
+
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+    user = asyncio.run(_insert_user(factory))
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    async def setup() -> uuid.UUID:
+        now = datetime.now(UTC)
+        async with factory() as s:
+            for i in range(29):
+                v = VocabItem(
+                    token=f"prior{i}",
+                    language="en",
+                    definition=f"definition long enough for prior{i} validation.",
+                    example_sentence=f"The prior{i} word appears here.",
+                )
+                s.add(v)
+                await s.flush()
+                s.add(
+                    Review(
+                        user_id=user.id,
+                        vocab_item_id=v.id,
+                        last_reviewed_at=now,
+                    )
+                )
+            target_vocab = VocabItem(
+                token="target",
+                language="en",
+                definition="The 30th completed-review trigger word.",
+                example_sentence="The target word appears here.",
+            )
+            s.add(target_vocab)
+            await s.flush()
+            r = Review(user_id=user.id, vocab_item_id=target_vocab.id, due_at=now)
+            s.add(r)
+            await s.commit()
+            await s.refresh(r)
+            return r.id
+
+    review_id = asyncio.run(setup())
+
+    with (
+        _patch("app.api.reviews.celery_app.send_task") as mock_send,
+        TestClient(app) as c,
+    ):
+        resp = c.post(f"/review/{review_id}/rate", data={"quality": 4})
+
+    assert resp.status_code == 200
+    mock_send.assert_called_once()
+    _, kwargs = mock_send.call_args
+    assert kwargs["kwargs"]["user_id"] == str(user.id)
+
+
+def test_rate_does_not_enqueue_personalized_at_non_milestone(tmp_path: Path) -> None:
+    from unittest.mock import patch as _patch
+
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+    user = asyncio.run(_insert_user(factory))
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    async def setup() -> uuid.UUID:
+        now = datetime.now(UTC)
+        async with factory() as s:
+            for i in range(28):
+                v = VocabItem(
+                    token=f"non{i}",
+                    language="en",
+                    definition=f"long-enough definition for non{i} validation.",
+                    example_sentence=f"The non{i} word appears here.",
+                )
+                s.add(v)
+                await s.flush()
+                s.add(Review(user_id=user.id, vocab_item_id=v.id, last_reviewed_at=now))
+            target_vocab = VocabItem(
+                token="non_target",
+                language="en",
+                definition="A definition long enough to clear validation.",
+                example_sentence="The non_target word appears here.",
+            )
+            s.add(target_vocab)
+            await s.flush()
+            r = Review(user_id=user.id, vocab_item_id=target_vocab.id, due_at=now)
+            s.add(r)
+            await s.commit()
+            await s.refresh(r)
+            return r.id
+
+    review_id = asyncio.run(setup())
+
+    with (
+        _patch("app.api.reviews.celery_app.send_task") as mock_send,
+        TestClient(app) as c,
+    ):
+        resp = c.post(f"/review/{review_id}/rate", data={"quality": 4})
+
+    assert resp.status_code == 200
+    mock_send.assert_not_called()
+
+
+def test_rate_swallows_enqueue_failure_to_keep_response_200(tmp_path: Path) -> None:
+    from unittest.mock import patch as _patch
+
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+    user = asyncio.run(_insert_user(factory))
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    async def setup() -> uuid.UUID:
+        now = datetime.now(UTC)
+        async with factory() as s:
+            for i in range(29):
+                v = VocabItem(
+                    token=f"sf{i}",
+                    language="en",
+                    definition=f"long-enough definition for sf{i} validation.",
+                    example_sentence=f"The sf{i} word appears here.",
+                )
+                s.add(v)
+                await s.flush()
+                s.add(Review(user_id=user.id, vocab_item_id=v.id, last_reviewed_at=now))
+            target_vocab = VocabItem(
+                token="sf_target",
+                language="en",
+                definition="A definition long enough to clear validation.",
+                example_sentence="The sf_target word appears here.",
+            )
+            s.add(target_vocab)
+            await s.flush()
+            r = Review(user_id=user.id, vocab_item_id=target_vocab.id, due_at=now)
+            s.add(r)
+            await s.commit()
+            await s.refresh(r)
+            return r.id
+
+    review_id = asyncio.run(setup())
+
+    with (
+        _patch(
+            "app.api.reviews.celery_app.send_task",
+            side_effect=RuntimeError("redis down"),
+        ),
+        TestClient(app) as c,
+    ):
+        resp = c.post(f"/review/{review_id}/rate", data={"quality": 4})
+
+    assert resp.status_code == 200

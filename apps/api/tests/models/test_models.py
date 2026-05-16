@@ -35,6 +35,9 @@ def test_user_model_table_and_columns() -> None:
         "name",
         "avatar_url",
         "timezone",
+        "interest_tags",
+        "last_personalized_milestone",
+        "last_milestone_seen",
         "created_at",
         "updated_at",
     }
@@ -44,6 +47,16 @@ def test_user_model_table_and_columns() -> None:
     assert cols["google_id"].nullable is False
     assert cols["avatar_url"].nullable is True
     assert cols["timezone"].nullable is False
+    assert cols["interest_tags"].nullable is False
+    assert cols["last_personalized_milestone"].nullable is False
+    assert cols["last_milestone_seen"].nullable is False
+
+
+def test_user_default_interest_tags_are_kid_friendly_starting_set() -> None:
+    from app.models.user import DEFAULT_INTEREST_TAGS
+
+    assert DEFAULT_INTEREST_TAGS == ["animals", "family", "food"]
+    assert User.__table__.c.interest_tags.default is not None
 
 
 def test_vocab_item_model_table_and_columns() -> None:
@@ -59,6 +72,7 @@ def test_vocab_item_model_table_and_columns() -> None:
         "audio_url",
         "enrichment_attempts",
         "last_enrichment_attempted_at",
+        "source",
         "created_at",
         "updated_at",
     }
@@ -68,6 +82,7 @@ def test_vocab_item_model_table_and_columns() -> None:
     assert cols["audio_url"].nullable is True
     assert cols["enrichment_attempts"].nullable is False
     assert cols["last_enrichment_attempted_at"].nullable is True
+    assert cols["source"].nullable is False
     # Composite uniqueness on (token, language)
     uniques = [
         tuple(sorted(c.name for c in u.columns))

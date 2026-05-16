@@ -164,7 +164,10 @@ async def callback(
 
     await session.commit()
     await session.refresh(user)
-    if is_new:
+    existing_review_id = (
+        await session.execute(select(Review.id).where(Review.user_id == user.id).limit(1))
+    ).scalar_one_or_none()
+    if is_new or existing_review_id is None:
         await _seed_starter_vocab(session, user)
     request.session["user_id"] = str(user.id)
     return RedirectResponse(url="/dashboard", status_code=307)

@@ -38,9 +38,21 @@ class LLMClient:
         self._timeout_s = timeout_s
         self._max_tokens = max_tokens
 
-    def complete(self, prompt: str, response_schema: type[T], max_retries: int = 3) -> T:
-        messages: list[ChatCompletionMessageParam] = [{"role": "user", "content": prompt}]
+    def complete(
+        self,
+        prompt: str,
+        response_schema: type[T],
+        max_retries: int = 3,
+        *,
+        system_prompt: str | None = None,
+        max_tokens: int | None = None,
+    ) -> T:
+        messages: list[ChatCompletionMessageParam] = []
+        if system_prompt is not None:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
         last_error: ValidationError | None = None
+        effective_max_tokens = max_tokens if max_tokens is not None else self._max_tokens
 
         for attempt in range(1, max_retries + 1):
             completion = self._client.chat.completions.create(
@@ -48,7 +60,7 @@ class LLMClient:
                 messages=messages,
                 response_format={"type": "json_object"},
                 timeout=self._timeout_s,
-                max_tokens=self._max_tokens,
+                max_tokens=effective_max_tokens,
             )
             usage = completion.usage
             logger.info(

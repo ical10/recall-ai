@@ -1,33 +1,36 @@
-<form hx-post="/vocab" hx-ext="json-enc" hx-target="this" hx-swap="outerHTML" class="rounded-lg border border-slate-200 bg-white p-6">
-  <h2 class="text-lg font-semibold text-slate-900">Add Vocabulary</h2>
-  <div class="mt-4 flex gap-3">
-    <label class="flex-1">
-      <span class="text-sm text-slate-500">Word / Phrase</span>
-      <input
-        type="text"
-        name="token"
-        required
-        minlength="1"
-        maxlength="255"
-        placeholder="e.g. ephemeral"
-        class="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-slate-900 placeholder-slate-400"
-      />
-    </label>
-    <label class="w-40">
-      <span class="text-sm text-slate-500">Language</span>
-      <select
-        name="language"
-        class="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-slate-900"
-      >
-        <option value="en">English</option>
-        <option value="fr">French</option>
-        <option value="de">German</option>
-        <option value="es">Spanish</option>
-        <option value="">Other</option>
-      </select>
-    </label>
-  </div>
-  <button type="submit" class="mt-4 rounded-md bg-slate-900 px-4 py-2 text-white hover:bg-slate-700">
-    Add
+<form
+  id="add"
+  hx-post="/vocab"
+  hx-ext="json-enc"
+  hx-target="this"
+  hx-swap="outerHTML"
+  class="card-paper tilt-l relative"
+>
+  <span class="washi washi--sky -top-3 left-8 tilt-r-2"></span>
+
+  <p class="font-mono text-[11px] uppercase tracking-[0.22em] text-ink-mute">Stash a word</p>
+  <h2 class="mt-1 font-display text-3xl font-black tracking-tight">
+    Add to your <span class="marker">deck</span>
+  </h2>
+
+  <label class="mt-5 block">
+    <span class="text-xs font-bold uppercase tracking-wider text-ink-soft">Word or phrase</span>
+    <input
+      type="text"
+      name="token"
+      required
+      minlength="1"
+      maxlength="255"
+      autocomplete="off"
+      placeholder="ephemeral"
+      class="mt-1.5 w-full rounded-2xl border-2 border-ink bg-cream-50 px-4 py-3 font-display text-xl font-bold text-ink placeholder:font-sans placeholder:text-base placeholder:font-normal placeholder:text-ink-mute/60 focus:outline-none focus:ring-4 focus:ring-tangerine/30"
+    />
+  </label>
+
+  <input type="hidden" name="language" value="en" />
+
+  <button type="submit" class="btn-pop btn-pop--primary mt-6 w-full text-base">
+    Add to deck
+    <span aria-hidden="true">+</span>
   </button>
 </form>

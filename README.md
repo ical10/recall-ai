@@ -35,6 +35,17 @@ pnpm worker   # Celery worker (LLM content generation)
 pnpm beat     # Celery beat (daily scheduling)
 ```
 
+## Run the full stack in Docker
+
+End-to-end smoke test of the deploy artifact (Postgres + Redis + the web image Railway will run):
+
+```bash
+cp .env.example .env   # set GOOGLE_CLIENT_*, LLM_*, SECRET_KEY
+docker compose up --build
+```
+
+`pnpm dev` is still the recommended dev loop — it gives you Tailwind + uvicorn hot reload. The Docker target is for verifying the production-shaped image locally.
+
 ## Reset database
 
 Wipe everything and re-seed from scratch:

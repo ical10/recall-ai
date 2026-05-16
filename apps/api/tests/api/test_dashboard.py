@@ -193,3 +193,68 @@ def test_dashboard_handles_user_with_no_reviews(tmp_path: Path) -> None:
     assert resp.status_code == 200
     assert "0" in resp.text
     assert "No reviews yet" in resp.text
+
+
+def test_dashboard_renders_milestone_banner_when_unseen_milestone_set(tmp_path: Path) -> None:
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+    user = asyncio.run(_insert_user(factory))
+
+    async def bump() -> None:
+        from sqlalchemy import update as _update
+
+        async with factory() as s:
+            await s.execute(
+                _update(User)
+                .where(User.id == user.id)
+                .values(last_personalized_milestone=30, last_milestone_seen=0)
+            )
+            await s.commit()
+
+    asyncio.run(bump())
+
+    async def fresh() -> User:
+        from sqlalchemy import select as _select
+
+        async with factory() as s:
+            return (await s.execute(_select(User).where(User.id == user.id))).scalar_one()
+
+    user = asyncio.run(fresh())
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    with TestClient(app) as c:
+        resp = c.get("/dashboard")
+    assert resp.status_code == 200
+    assert "Milestone unlocked" in resp.text
+    assert "30 reviews" in resp.text
+
+
+def test_dashboard_hides_milestone_banner_when_seen_caught_up(tmp_path: Path) -> None:
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+    user = asyncio.run(_insert_user(factory))
+
+    async def bump() -> None:
+        from sqlalchemy import update as _update
+
+        async with factory() as s:
+            await s.execute(
+                _update(User)
+                .where(User.id == user.id)
+                .values(last_personalized_milestone=30, last_milestone_seen=30)
+            )
+            await s.commit()
+
+    asyncio.run(bump())
+
+    async def fresh() -> User:
+        from sqlalchemy import select as _select
+
+        async with factory() as s:
+            return (await s.execute(_select(User).where(User.id == user.id))).scalar_one()
+
+    user = asyncio.run(fresh())
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    with TestClient(app) as c:
+        resp = c.get("/dashboard")
+    assert resp.status_code == 200
+    assert "Milestone unlocked" not in resp.text

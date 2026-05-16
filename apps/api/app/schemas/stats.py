@@ -14,3 +14,4 @@ class UserStats(BaseModel):
     total_reviews: int = Field(ge=0)
     current_streak: int = Field(ge=0)
     recent: list[RecentRating] = Field(max_length=5)
+    unseen_milestone: int | None = None

@@ -7,7 +7,7 @@ from openai.types.chat.chat_completion import Choice
 from openai.types.completion_usage import CompletionUsage
 from pydantic import ValidationError
 
-from app.schemas.llm import LLMOutput, SimpleVocabExample
+from app.schemas.llm import GeneratedVocabBatch, LLMOutput, SimpleVocabExample
 from app.services.llm import LLMClient, LLMValidationFailure
 
 
@@ -70,6 +70,20 @@ def test_simple_vocab_example_rejects_token_appearing_only_as_substring() -> Non
             definition="A small domesticated carnivorous mammal.",
             example="String concatenation is a common operation.",
         )
+
+
+def test_generated_vocab_batch_validates_list_of_items() -> None:
+    batch = GeneratedVocabBatch(
+        items=[
+            SimpleVocabExample(
+                token="ephemeral",
+                definition="Lasting briefly; transient and short-lived.",
+                example="The cherry blossoms were ephemeral but unforgettable.",
+            ),
+        ]
+    )
+    assert len(batch.items) == 1
+    assert batch.items[0].token == "ephemeral"
 
 
 def test_complete_returns_validated_pydantic_object_on_first_try() -> None:
@@ -215,6 +229,78 @@ def test_llm_client_defaults_to_openai_constructed_from_settings(
 
     assert captured == {"base_url": "https://example.test/api/v1", "api_key": "sk-test-real"}
     assert client._model == "some/model:free"
+
+
+def test_complete_includes_system_prompt_as_first_message_when_provided() -> None:
+    fake_openai = MagicMock()
+    fake_openai.chat.completions.create.return_value = _fake_completion(
+        json.dumps(
+            {
+                "token": "ephemeral",
+                "definition": "Lasting briefly; transient and short-lived.",
+                "example": "The cherry blossoms were ephemeral but unforgettable.",
+            }
+        )
+    )
+    client = LLMClient(openai_client=fake_openai, model="test-model", timeout_s=10.0)
+    client.complete(
+        "Define ephemeral.",
+        SimpleVocabExample,
+        system_prompt="You are a vocabulary curator.",
+    )
+
+    messages = fake_openai.chat.completions.create.call_args.kwargs["messages"]
+    assert messages[0] == {"role": "system", "content": "You are a vocabulary curator."}
+    assert messages[1]["role"] == "user"
+    assert messages[1]["content"] == "Define ephemeral."
+
+
+def test_complete_system_prompt_persists_across_refinement_retries() -> None:
+    fake_openai = MagicMock()
+    fake_openai.chat.completions.create.side_effect = [
+        _fake_completion(json.dumps({"token": "x"})),
+        _fake_completion(
+            json.dumps(
+                {
+                    "token": "ephemeral",
+                    "definition": "Lasting briefly; transient and short-lived.",
+                    "example": "The cherry blossoms were ephemeral but unforgettable.",
+                }
+            )
+        ),
+    ]
+    client = LLMClient(openai_client=fake_openai, model="test-model", timeout_s=10.0)
+    client.complete(
+        "Define ephemeral.",
+        SimpleVocabExample,
+        max_retries=3,
+        system_prompt="You are a curator.",
+    )
+
+    first_messages = fake_openai.chat.completions.create.call_args_list[0].kwargs["messages"]
+    second_messages = fake_openai.chat.completions.create.call_args_list[1].kwargs["messages"]
+    assert first_messages[0] == {"role": "system", "content": "You are a curator."}
+    assert second_messages[0] == {"role": "system", "content": "You are a curator."}
+
+
+def test_complete_per_call_max_tokens_overrides_instance_default() -> None:
+    fake_openai = MagicMock()
+    fake_openai.chat.completions.create.return_value = _fake_completion(
+        json.dumps(
+            {
+                "token": "ephemeral",
+                "definition": "Lasting briefly; transient and short-lived.",
+                "example": "The cherry blossoms were ephemeral but unforgettable.",
+            }
+        )
+    )
+    client = LLMClient(
+        openai_client=fake_openai, model="test-model", timeout_s=10.0, max_tokens=100
+    )
+    client.complete("Define ephemeral.", SimpleVocabExample, max_tokens=4096)
+
+    call_kwargs = fake_openai.chat.completions.create.call_args.kwargs
+    assert call_kwargs["max_tokens"] == 4096
 
 
 def test_complete_logs_attempt_number_on_each_call(caplog: pytest.LogCaptureFixture) -> None:

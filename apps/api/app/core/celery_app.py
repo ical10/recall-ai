@@ -25,5 +25,12 @@ celery_app.conf.update(
             "schedule": crontab(hour=19, minute=0),
             "kwargs": {"batch_size": 25},
         },
+        "content-gen-shared-pool": {
+            "task": "content_gen.generate_shared_pool",
+            # 18:00 UTC, one hour before the enrichment tick so any unenriched
+            # rows we generate get a safety-net pass the same evening.
+            "schedule": crontab(hour=18, minute=0),
+            "kwargs": {"count": 10},
+        },
     },
 )

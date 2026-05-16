@@ -1,0 +1,39 @@
+<form
+  id="interests-form"
+  hx-post="/settings/interests"
+  hx-target="this"
+  hx-swap="outerHTML"
+  class="card-paper tilt-l relative"
+>
+  <span class="washi -top-3 left-12 tilt-r-2"></span>
+
+  {% if saved %}
+  <p class="mb-4 inline-flex items-center gap-2 rounded-xl border-2 border-ink bg-teal/15 px-3 py-1.5 text-sm font-bold text-teal-dark">
+    <span aria-hidden="true">✓</span> Saved
+  </p>
+  {% endif %}
+
+  <fieldset>
+    <legend class="font-display text-2xl font-black tracking-tight">Topics</legend>
+    <p class="mt-1 text-sm text-ink-mute">Pick a few — change anytime.</p>
+    <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+      {% for tag in all_tags %}
+      <label class="flex items-center gap-2 rounded-xl border-2 border-ink bg-cream-50 px-3 py-2 text-sm font-semibold capitalize text-ink hover:bg-honey/30 has-[:checked]:bg-tangerine has-[:checked]:text-cream-50">
+        <input
+          type="checkbox"
+          name="tags"
+          value="{{ tag }}"
+          class="h-4 w-4 accent-tangerine"
+          {% if tag in selected_tags %}checked{% endif %}
+        />
+        <span>{{ tag.replace("_", " ") }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </fieldset>
+
+  <button type="submit" class="btn-pop btn-pop--primary mt-7 w-full text-base">
+    Save
+    <span aria-hidden="true">→</span>
+  </button>
+</form>

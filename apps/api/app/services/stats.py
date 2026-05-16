@@ -112,11 +112,18 @@ async def compute_user_stats(
     ).all()
     recent = [RecentRating(token=t, interval_days=i, reviewed_at=r) for (t, i, r) in recent_rows]
 
+    unseen_milestone = (
+        user.last_personalized_milestone
+        if user.last_personalized_milestone > user.last_milestone_seen
+        else None
+    )
+
     return UserStats(
         due_today=int(due_today),
         total_reviews=int(total_reviews),
         current_streak=streak,
         recent=recent,
+        unseen_milestone=unseen_milestone,
     )
 
 

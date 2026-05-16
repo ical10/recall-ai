@@ -307,3 +307,103 @@ def test_callback_seeds_starter_vocab_for_new_user(tmp_path: Path) -> None:
 
     count = asyncio.run(check())
     assert count == 12
+
+
+def test_callback_does_not_reseed_existing_user_with_reviews(tmp_path: Path) -> None:
+    _setup_env()
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+
+    from app.models.vocab_item import VocabItem
+
+    async def insert_existing_user_with_one_review() -> None:
+        async with factory() as s:
+            user = User(
+                email="active@b.com",
+                google_id="sub-active",
+                name="Active",
+                avatar_url=None,
+            )
+            s.add(user)
+            await s.flush()
+            vocab = VocabItem(token="solo", language="en", definition="alone")
+            s.add(vocab)
+            await s.flush()
+            s.add(Review(user_id=user.id, vocab_item_id=vocab.id))
+            await s.commit()
+
+    asyncio.run(insert_existing_user_with_one_review())
+
+    with (
+        patch("app.api.auth._exchange_code", new_callable=AsyncMock) as mock_exchange,
+        patch("secrets.token_urlsafe", return_value=TEST_STATE),
+        TestClient(app) as c,
+    ):
+        mock_exchange.return_value = {
+            "id_token": _fake_id_token("sub-active", "active@b.com", "Active"),
+        }
+        login_resp = c.get("/auth/login", follow_redirects=False)
+        cookies = login_resp.cookies
+        c.get(
+            f"/auth/callback?code=c&state={TEST_STATE}",
+            cookies=cookies,
+        )
+
+    async def check() -> int:
+        async with factory() as s:
+            u = (
+                await s.execute(select(User).where(User.google_id == "sub-active"))
+            ).scalar_one_or_none()
+            assert u is not None
+            result = await s.execute(select(Review).where(Review.user_id == u.id))
+            return len(result.all())
+
+    count = asyncio.run(check())
+    assert count == 1
+
+
+def test_callback_backfills_starter_vocab_for_existing_user_with_no_reviews(
+    tmp_path: Path,
+) -> None:
+    _setup_env()
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+
+    async def insert_existing_user() -> None:
+        async with factory() as s:
+            s.add(
+                User(
+                    email="old@b.com",
+                    google_id="sub-old",
+                    name="Old",
+                    avatar_url=None,
+                )
+            )
+            await s.commit()
+
+    asyncio.run(insert_existing_user())
+
+    with (
+        patch("app.api.auth._exchange_code", new_callable=AsyncMock) as mock_exchange,
+        patch("secrets.token_urlsafe", return_value=TEST_STATE),
+        TestClient(app) as c,
+    ):
+        mock_exchange.return_value = {
+            "id_token": _fake_id_token("sub-old", "old@b.com", "Old"),
+        }
+        login_resp = c.get("/auth/login", follow_redirects=False)
+        cookies = login_resp.cookies
+        c.get(
+            f"/auth/callback?code=c&state={TEST_STATE}",
+            cookies=cookies,
+        )
+
+    async def check() -> int:
+        async with factory() as s:
+            u = (
+                await s.execute(select(User).where(User.google_id == "sub-old"))
+            ).scalar_one_or_none()
+            assert u is not None
+            result = await s.execute(select(Review).where(Review.user_id == u.id))
+            return len(result.all())
+
+    count = asyncio.run(check())
+    assert count == 12
