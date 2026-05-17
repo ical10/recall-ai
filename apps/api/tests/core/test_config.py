@@ -11,6 +11,7 @@ def test_settings_loads_required_fields_from_env(monkeypatch):
     monkeypatch.setenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
     monkeypatch.setenv("LLM_MODEL", "z-ai/glm-4.5-air:free")
     monkeypatch.setenv("SECRET_KEY", "s")
+    monkeypatch.setenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/callback")
     monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
     monkeypatch.delenv("GOOGLE_CLIENT_SECRET", raising=False)
 
@@ -34,6 +35,7 @@ def test_settings_missing_required_raises(monkeypatch):
         "LLM_BASE_URL",
         "LLM_MODEL",
         "SECRET_KEY",
+        "GOOGLE_REDIRECT_URI",
     )
     for key in required:
         monkeypatch.delenv(key, raising=False)

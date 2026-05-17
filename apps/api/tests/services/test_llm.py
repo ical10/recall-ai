@@ -213,6 +213,7 @@ def test_llm_client_defaults_to_openai_constructed_from_settings(
         secret_key="x",
         llm_model="some/model:free",
         llm_base_url="https://example.test/api/v1",
+        google_redirect_uri="http://localhost:8000/auth/callback",
     )
     monkeypatch.setattr(llm_module, "get_settings", lambda: fake_settings)
 

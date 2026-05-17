@@ -15,7 +15,8 @@ class Settings(BaseSettings):
     secret_key: SecretStr
     google_client_id: str = ""
     google_client_secret: SecretStr = SecretStr("")
-    google_redirect_uri: str = "http://localhost:8000/auth/callback"
+    google_redirect_uri: str
+    session_https_only: bool = False
 
 
 @lru_cache
