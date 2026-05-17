@@ -26,11 +26,22 @@
         {% endif %}
       </p>
     </div>
-    <a href="/review" class="btn-pop btn-pop--primary text-base">
+    <a href="/review" class="btn-pop btn-pop--primary text-base{% if stats.due_today > 0 %} relative z-50 animate-sparkle{% endif %}">
       {% if stats.due_today > 0 %}Start review{% else %}Open deck{% endif %}
       <span aria-hidden="true">→</span>
     </a>
   </header>
+
+  {% if stats.due_today > 0 %}
+  <div id="spotlight" class="mt-6 card-paper max-w-xs animate-pop-in flex items-start gap-3">
+    <span class="text-2xl">👆</span>
+    <div>
+      <p class="font-display font-black text-lg leading-tight">Cards are ready</p>
+      <p class="mt-1 text-sm text-ink-mute">Hit <strong>Start review</strong> to keep your streak alive.</p>
+      <button class="btn-pop btn-pop--ghost text-xs mt-2" onclick="this.closest('#spotlight').remove()">Got it</button>
+    </div>
+  </div>
+  {% endif %}
 
   <section class="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-3">
     <div class="card-paper tilt-l-2 animate-rise" style="animation-delay: 40ms">
