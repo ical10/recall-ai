@@ -62,7 +62,7 @@
       </div>
 
       {% if stats.recent %}
-      <ul class="mt-4 space-y-3">
+      <ul class="mt-4 space-y-6">
         {% for r in stats.recent %}
           {{ interval_card(r, loop.index) }}
         {% endfor %}
