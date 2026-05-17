@@ -25,13 +25,14 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="RecallAI", lifespan=lifespan)
+    settings = get_settings()
     app.add_middleware(
         SessionMiddleware,
-        secret_key=get_settings().secret_key.get_secret_value(),
+        secret_key=settings.secret_key.get_secret_value(),
         session_cookie="recallai_session",
         max_age=60 * 60 * 4,
         same_site="lax",
-        https_only=False,
+        https_only=settings.session_https_only,
     )
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 

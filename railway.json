@@ -5,6 +5,7 @@
   },
   "deploy": {
     "startCommand": "uv run uvicorn app.main:app --app-dir apps/api --host 0.0.0.0 --port $PORT",
+    "preDeployCommand": ["cd apps/api && uv run alembic upgrade head"],
     "healthcheckPath": "/healthz",
     "healthcheckTimeout": 30,
     "restartPolicyType": "ON_FAILURE",
