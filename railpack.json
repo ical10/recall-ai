@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "python",
+  "packages": {
+    "python": "3.11",
+    "node": "22"
+  },
+  "steps": {
+    "build_css": {
+      "commands": [
+        "corepack enable",
+        "corepack prepare pnpm@9.0.0 --activate",
+        "pnpm install --frozen-lockfile",
+        "pnpm run build:css:prod"
+      ]
+    }
+  },
+  "deploy": {
+    "startCommand": "sh -c 'uv run uvicorn app.main:app --app-dir apps/api --host 0.0.0.0 --port $PORT'"
+  }
+}
