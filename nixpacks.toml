@@ -1,5 +1,6 @@
 [phases.setup]
 nixPkgs = ["python311", "uv", "nodejs_22", "pnpm"]
+nixLibs = ["stdenv.cc.cc.lib"]
 aptPkgs = ["libstdc++6"]
 
 [phases.install]
