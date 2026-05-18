@@ -4,8 +4,8 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "sh -c 'uv run uvicorn app.main:app --app-dir apps/api --host 0.0.0.0 --port $PORT'",
-    "preDeployCommand": ["sh -c 'cd apps/api && uv run alembic upgrade head'"],
+    "startCommand": "sh -c 'export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH; uv run uvicorn app.main:app --app-dir apps/api --host 0.0.0.0 --port $PORT'",
+    "preDeployCommand": ["sh -c 'export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH; cd apps/api && uv run alembic upgrade head'"],
     "healthcheckPath": "/healthz",
     "healthcheckTimeout": 30,
     "restartPolicyType": "ON_FAILURE",
