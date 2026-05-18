@@ -8,10 +8,8 @@
   "steps": {
     "build_css": {
       "commands": [
-        "corepack enable",
-        "corepack prepare pnpm@9.0.0 --activate",
-        "pnpm install --frozen-lockfile",
-        "pnpm run build:css:prod"
+        "npx -y pnpm@9.0.0 install --frozen-lockfile",
+        "npx -y pnpm@9.0.0 run build:css:prod"
       ]
     }
   },
