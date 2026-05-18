@@ -2,6 +2,53 @@
 
 Spaced-repetition vocabulary trainer with LLM-generated content for ESL learners.
 
+## Architecture
+
+```
+┌──────────┐                                        ┌──────────────┐
+│   User   │                                        │ LLM Provider │
+│ (browser)│                                        │ (OpenRouter) │
+└────┬─────┘                                        └──────▲───────┘
+     │ HTTPS                                               │
+     │ OAuth + review UI                                   │ POST /chat
+     ▼                                                     │ completions
+┌─────────────────┐   ┌──────────────────┐   ┌─────────────┴──────┐
+│   Web service   │   │   Beat service   │   │   Worker service   │
+│  (recall-ai)    │   │     replicas=1   │   │                    │
+│  FastAPI+uvicorn│   │  Celery scheduler│   │   Celery worker    │
+│  Tailwind+htmx  │   │ 18:00 + 19:00 UTC│   │  consumes tasks    │
+└────┬────────────┘   └────────┬─────────┘   └─────┬─────────▲────┘
+     │                         │ enqueues          │ persists│ pulls
+     │ session +               │ scheduled tasks   │ vocab + │ tasks
+     │ user CRUD               ▼                   │ reviews │
+     │           ┌───────────────────────────┐     │         │
+     │           │       Redis (addon)       │◄────┘         │
+     │           │   broker + result backend │───────────────┘
+     │           └───────────────────────────┘
+     │                         ▲
+     │ alembic migrations      │ (worker does NOT pub here;
+     │ (preDeployCommand)      │  it only consumes)
+     ▼                         │
+┌─────────────────────────────────────────────────┐
+│              Postgres (addon)                   │
+│  users · vocab_items · reviews · interest_tags  │
+└─────────────────────────────────────────────────┘
+                       ▲
+                       │ persists vocab generation results
+                       └─── (from Worker)
+```
+
+**Key relationships:**
+
+- **Web ↔ Postgres**: synchronous reads/writes per HTTP request (user, vocab, reviews). Also runs `alembic upgrade head` during preDeploy.
+- **Web ↔ Redis**: web does NOT touch Redis directly. No task enqueueing from the request path.
+- **Beat → Redis**: publishes tasks on the cron schedule. Never touches Postgres.
+- **Worker ← Redis**: long-poll consumer.
+- **Worker → Postgres**: writes generated vocab + bookkeeping (attempts, source, milestones).
+- **Worker → LLM provider**: outbound HTTPS for content generation. Beat and Web never call the LLM.
+- **Beat is `replicas=1`**: more than one beat = duplicate task enqueueing = duplicate LLM costs. Workers can scale horizontally without that risk.
+- **All 3 services share Postgres + Redis**: same Railway project scope, `${{ Postgres.DATABASE_URL }}` and `${{ Redis.REDIS_URL }}` references resolve to the same addons.
+
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/)
