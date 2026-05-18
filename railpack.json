@@ -8,7 +8,7 @@
   "steps": {
     "build_css": {
       "inputs": [
-        { "local": true, "include": ["."] }
+        { "step": "install" }
       ],
       "commands": [
         "npx -y pnpm@9.0.0 install --frozen-lockfile",
