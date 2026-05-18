@@ -7,6 +7,9 @@
   },
   "steps": {
     "build_css": {
+      "inputs": [
+        { "local": true, "include": ["."] }
+      ],
       "commands": [
         "npx -y pnpm@9.0.0 install --frozen-lockfile",
         "npx -y pnpm@9.0.0 run build:css:prod"
