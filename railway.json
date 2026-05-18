@@ -4,7 +4,8 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "set -ex; echo PWD=$(pwd); which uv; uv --version; cd apps/api && uv run alembic upgrade head && cd /app && uv run uvicorn app.main:app --app-dir apps/api --host 0.0.0.0 --port $PORT",
+    "startCommand": "sh -c 'uv run uvicorn app.main:app --app-dir apps/api --host 0.0.0.0 --port $PORT'",
+    "preDeployCommand": ["sh -c 'cd apps/api && uv run alembic upgrade head'"],
     "healthcheckPath": "/healthz",
     "healthcheckTimeout": 30,
     "restartPolicyType": "ON_FAILURE",
