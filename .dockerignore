@@ -9,7 +9,6 @@ node_modules
 *.pyo
 .pytest_cache
 .turbo
-.nixpacks
 .mypy_cache
 .ruff_cache
 apps/api/static/css/output.css
