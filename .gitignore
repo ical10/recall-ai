@@ -56,3 +56,6 @@ htmlcov/
 # Tailwind compiled output
 apps/api/static/css/output.css
 .worktrees/
+
+# SPA build output
+apps/web/dist/
