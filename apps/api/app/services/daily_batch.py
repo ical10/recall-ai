@@ -1,23 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
-
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.review import Review
 from app.models.user import User
 from app.models.vocab_item import VocabItem
 from app.schemas.batch import Card, DailyBatch
+from app.services.due import due_today_conditions, not_reviewed_today_condition
 
 
 async def build_daily_batch(session: AsyncSession, user: User) -> DailyBatch:
-    user_tz = ZoneInfo(user.timezone)
-    now = datetime.now(user_tz)
-    start_of_today = datetime.combine(now.date(), datetime.min.time(), tzinfo=user_tz)
-    end_of_today = start_of_today + timedelta(days=1)
-
     rows = (
         await session.execute(
             select(
@@ -34,9 +27,10 @@ async def build_daily_batch(session: AsyncSession, user: User) -> DailyBatch:
             .join(VocabItem, Review.vocab_item_id == VocabItem.id)
             .where(
                 Review.user_id == user.id,
-                Review.suspended.is_(False),
-                Review.due_at < end_of_today,
-                VocabItem.definition != "",
+                and_(
+                    *due_today_conditions(user.timezone),
+                    not_reviewed_today_condition(user.timezone),
+                ),
             )
             .order_by(Review.due_at, VocabItem.token)
         )

@@ -7,11 +7,13 @@ def test_router_is_an_apirouter() -> None:
     assert isinstance(router, APIRouter)
 
 
-def test_review_routes_are_registered() -> None:
-    from app.api.router import router
-
-    paths = [route.path for route in router.routes]  # type: ignore[union-attr]
-    assert "/review" in paths
+def test_json_routes_are_registered() -> None:
+    paths = [route.path for route in router.routes]
+    assert "/api/dashboard" in paths
+    assert "/api/review/batch" in paths
+    assert "/api/me" in paths
+    assert "/api/settings" in paths
+    assert "/api/archive" in paths
 
 
 def test_main_app_has_session_middleware() -> None:
