@@ -7,6 +7,7 @@ os.environ.setdefault("LLM_API_KEY", "test-key")
 os.environ.setdefault("LLM_BASE_URL", "https://test.invalid/v1")
 os.environ.setdefault("LLM_MODEL", "test/test-model")
 os.environ.setdefault("SECRET_KEY", "test-secret")
+os.environ.setdefault("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/callback")
 
 import pytest
 from fastapi.testclient import TestClient
