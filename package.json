@@ -15,7 +15,7 @@
     "gen:types": "openapi-typescript http://localhost:8000/openapi.json -o apps/web/src/api/schema.d.ts"
   },
   "devDependencies": {
-    "concurrently": "9.2.1",
-    "turbo": "2.9.8"
+    "concurrently": "10.0.3",
+    "turbo": "2.10.0"
   }
 }
