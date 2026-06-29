@@ -47,6 +47,8 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(401)
     async def unauthenticated_handler(request: Request, _exc: Exception) -> Response:
+        if request.url.path.startswith("/api"):
+            return JSONResponse({"detail": "Not authenticated"}, status_code=401)
         if request.headers.get("hx-request"):
             return Response(status_code=401, headers={"HX-Redirect": "/auth/login-page"})
         return RedirectResponse(url="/auth/login-page", status_code=302)
