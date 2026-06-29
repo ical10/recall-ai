@@ -54,7 +54,7 @@ describe("reviewSession store", () => {
     expect(state.activeIndex).toBe(1);
   });
 
-  it("next on last card transitions revealed → idle", () => {
+  it("next on last card transitions revealed → idle and sets completed", () => {
     useReviewSession.getState().loadCards([makeCard()]);
     useReviewSession.getState().reveal();
     useReviewSession.getState().nextCard();
@@ -62,6 +62,12 @@ describe("reviewSession store", () => {
     const state = useReviewSession.getState();
     expect(state.phase).toBe("idle");
     expect(state.cards).toEqual([]);
+    expect(state.completed).toBe(true);
+  });
+
+  it("completed is false on fresh loadCards", () => {
+    useReviewSession.getState().loadCards([makeCard()]);
+    expect(useReviewSession.getState().completed).toBe(false);
   });
 
   it("reveal from idle is rejected (illegal transition)", () => {

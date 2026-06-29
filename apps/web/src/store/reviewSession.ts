@@ -20,6 +20,7 @@ interface ReviewSessionState {
   phase: Phase;
   cards: Card[];
   activeIndex: number;
+  completed: boolean;
   loadCards: (cards: Card[]) => void;
   reveal: () => void;
   nextCard: () => void;
@@ -30,9 +31,10 @@ export const useReviewSession = create<ReviewSessionState>((set, get) => ({
   phase: "idle",
   cards: [],
   activeIndex: 0,
+  completed: false,
 
   loadCards: (cards) => {
-    set({ cards, activeIndex: 0, phase: "showing" });
+    set({ cards, activeIndex: 0, phase: "showing", completed: false });
   },
 
   reveal: () => {
@@ -50,13 +52,13 @@ export const useReviewSession = create<ReviewSessionState>((set, get) => ({
     }
     const nextIndex = activeIndex + 1;
     if (nextIndex >= cards.length) {
-      set({ phase: "idle", cards: [], activeIndex: 0 });
+      set({ phase: "idle", cards: [], activeIndex: 0, completed: true });
     } else {
       set({ activeIndex: nextIndex, phase: "showing" });
     }
   },
 
   reset: () => {
-    set({ phase: "idle", cards: [], activeIndex: 0 });
+    set({ phase: "idle", cards: [], activeIndex: 0, completed: false });
   },
 }));

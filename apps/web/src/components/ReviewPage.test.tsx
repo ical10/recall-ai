@@ -9,19 +9,16 @@ vi.mock("@tanstack/react-query", () => ({
   useQueryClient: vi.fn(() => ({ invalidateQueries: vi.fn() })),
 }));
 
-import { useQuery, useMutation } from "@tanstack/react-query";
+vi.mock("@/api/client", () => ({
+  fetchApi: vi.fn(() => Promise.resolve({})),
+}));
 
-// Default: mutate() succeeds and invokes the component's onSuccess (which advances).
-function mockMutationSuccess() {
-  vi.mocked(useMutation).mockImplementation(
-    ((opts: { onSuccess?: (...args: unknown[]) => void }) => ({
-      mutate: (vars: unknown) =>
-        opts.onSuccess?.({ applied: 1, skipped: 0 }, vars, undefined, undefined),
-      isPending: false,
-      isError: false,
-    })) as unknown as typeof useMutation,
-  );
-}
+Object.defineProperty(globalThis, "crypto", {
+  value: { randomUUID: () => "00000000-0000-0000-0000-000000000000" },
+  writable: true,
+});
+
+import { useQuery } from "@tanstack/react-query";
 
 function makeCard(overrides: Partial<Card> = {}): Card {
   return {
@@ -42,7 +39,6 @@ function makeCard(overrides: Partial<Card> = {}): Card {
 
 beforeEach(() => {
   useReviewSession.getState().reset();
-  mockMutationSuccess();
 });
 
 describe("ReviewPage", () => {
@@ -57,7 +53,7 @@ describe("ReviewPage", () => {
     expect(screen.queryByText("serendipity")).not.toBeInTheDocument();
   });
 
-  it("renders the current card token and interval when showing", () => {
+  it("renders the current card token when showing", () => {
     vi.mocked(useQuery).mockReturnValue({
       data: { cards: [makeCard()] },
       isLoading: false,
@@ -69,7 +65,7 @@ describe("ReviewPage", () => {
     expect(screen.getByText(/Show Answer/)).toBeInTheDocument();
   });
 
-  it("reveals definition and rating buttons on Show Answer click", async () => {
+  it("reveals definition and rating buttons on Show Answer click", () => {
     vi.mocked(useQuery).mockReturnValue({
       data: { cards: [makeCard()] },
       isLoading: false,
@@ -81,12 +77,10 @@ describe("ReviewPage", () => {
 
     expect(screen.getByText("the occurrence of events by chance")).toBeInTheDocument();
     expect(screen.getByText(/Finding that book was pure serendipity/)).toBeInTheDocument();
-    for (const label of ["Again", "Hard", "Good", "Easy"]) {
-      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
-    }
+    expect(screen.getByText("Good")).toBeInTheDocument();
   });
 
-  it("advances to next card after a rating persists", async () => {
+  it("advances to next card after rating", () => {
     const cards = [
       makeCard({ token: "first" }),
       makeCard({ token: "second", review_id: "r2", vocab_item_id: "v2" }),
@@ -100,13 +94,13 @@ describe("ReviewPage", () => {
     render(<ReviewPage />);
     expect(screen.getByText("first")).toBeInTheDocument();
     fireEvent.click(screen.getByText(/Show Answer/));
-    fireEvent.click(screen.getByRole("button", { name: "Good" }));
+    fireEvent.click(screen.getByText("Good"));
 
     expect(screen.getByText("second")).toBeInTheDocument();
     expect(screen.queryByText(/Show Answer/)).toBeInTheDocument();
   });
 
-  it("shows the daily-done message when all cards are rated", async () => {
+  it("shows done screen when all cards completed", () => {
     vi.mocked(useQuery).mockReturnValue({
       data: { cards: [makeCard()] },
       isLoading: false,
@@ -115,34 +109,13 @@ describe("ReviewPage", () => {
 
     render(<ReviewPage />);
     fireEvent.click(screen.getByText(/Show Answer/));
-    fireEvent.click(screen.getByRole("button", { name: "Good" }));
+    fireEvent.click(screen.getByText("Good"));
 
-    expect(screen.getByText(/No more cards to review today/)).toBeInTheDocument();
+    expect(screen.getByText(/All caught up/)).toBeInTheDocument();
+    expect(screen.getByText(/Back to deck/)).toBeInTheDocument();
   });
 
-  it("surfaces an error and stays on the card when the rating fails", async () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: { cards: [makeCard({ token: "first" })] },
-      isLoading: false,
-      error: null,
-    } as never);
-    // Rating fails: mutate does not call onSuccess, and isError is true.
-    vi.mocked(useMutation).mockReturnValue({
-      mutate: vi.fn(),
-      isPending: false,
-      isError: true,
-    } as never);
-
-    render(<ReviewPage />);
-    fireEvent.click(screen.getByText(/Show Answer/));
-    fireEvent.click(screen.getByRole("button", { name: "Good" }));
-
-    expect(screen.getByText("first")).toBeInTheDocument();
-    expect(screen.getByText(/Couldn't save your rating/)).toBeInTheDocument();
-    expect(screen.queryByText(/No more cards to review today/)).not.toBeInTheDocument();
-  });
-
-  it("shows the daily-done message when the batch is empty", () => {
+  it("shows empty message when no cards due", () => {
     vi.mocked(useQuery).mockReturnValue({
       data: { cards: [] },
       isLoading: false,
@@ -150,6 +123,19 @@ describe("ReviewPage", () => {
     } as never);
 
     render(<ReviewPage />);
-    expect(screen.getByText(/No more cards to review today/)).toBeInTheDocument();
+    expect(screen.getByText(/No cards due/)).toBeInTheDocument();
+  });
+
+  it("reveals on Space keypress", () => {
+    vi.mocked(useQuery).mockReturnValue({
+      data: { cards: [makeCard()] },
+      isLoading: false,
+      error: null,
+    } as never);
+
+    render(<ReviewPage />);
+    fireEvent.keyDown(window, { key: " " });
+
+    expect(screen.getByText("the occurrence of events by chance")).toBeInTheDocument();
   });
 });

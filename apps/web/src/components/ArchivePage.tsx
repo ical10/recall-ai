@@ -1,6 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { fetchApi } from "@/api/client";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Chip } from "@/components/ui/Chip";
+import { Marker } from "@/components/ui/Marker";
 
 interface VocabItem {
   id: string;
@@ -36,21 +40,28 @@ export function ArchivePage() {
 
   return (
     <main className="max-w-2xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-display font-bold text-ink mb-8">Archive</h1>
+      <h1 className="text-5xl font-display font-black tracking-tight text-ink mb-8">
+        <Marker>Archive</Marker>
+      </h1>
 
       {data.items.length === 0 ? (
-        <p className="text-ink-mute">No vocabulary items yet.</p>
+        <Card>
+          <p className="text-ink-mute">No vocabulary items yet.</p>
+        </Card>
       ) : (
         <>
           <ul className="space-y-3 mb-6">
-            {data.items.map((item) => (
+            {data.items.map((item, i) => (
               <li
                 key={item.id}
-                className="bg-white border border-cream-300 rounded-xl px-4 py-3"
+                className="card-paper !p-4"
+                style={i % 2 === 0 ? { transform: "rotate(-1.5deg)" } : { transform: "rotate(1.5deg)" }}
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-medium text-ink">{item.token}</span>
-                  <span className="text-xs text-ink-mute">{item.language}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-display text-lg font-black text-ink">{item.token}</span>
+                    <Chip dotColor="bg-sky">{item.language}</Chip>
+                  </div>
                 </div>
                 <p className="text-sm text-ink-soft mt-1">{item.definition}</p>
               </li>
@@ -58,23 +69,23 @@ export function ArchivePage() {
           </ul>
 
           <div className="flex items-center justify-center gap-4">
-            <button
+            <Button
+              variant="ghost"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="px-4 py-2 text-sm font-medium bg-cream-200 rounded-xl disabled:opacity-40"
             >
               Previous
-            </button>
-            <span className="text-sm text-ink-mute">
+            </Button>
+            <span className="text-sm text-ink-mute font-mono">
               {page} / {totalPages}
             </span>
-            <button
+            <Button
+              variant="ghost"
               onClick={() => setPage((p) => p + 1)}
               disabled={page >= totalPages}
-              className="px-4 py-2 text-sm font-medium bg-cream-200 rounded-xl disabled:opacity-40"
             >
               Next
-            </button>
+            </Button>
           </div>
         </>
       )}
