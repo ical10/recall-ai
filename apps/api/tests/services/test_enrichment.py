@@ -6,7 +6,7 @@ import pytest
 
 from app.models.vocab_item import VocabItem
 from app.schemas.llm import SimpleVocabExample
-from app.services.enrichment import enrich_vocab_item
+from app.services.enrichment import apply_enrichment, enrich_vocab_item
 from app.services.llm import LLMClient, LLMValidationFailure
 
 
@@ -65,3 +65,42 @@ def test_enrich_vocab_item_propagates_llm_validation_failure() -> None:
 
     with pytest.raises(LLMValidationFailure):
         enrich_vocab_item(item, mock_llm)
+
+
+# --- apply_enrichment: the pending -> ready transition (state + attempt tracking) ---
+
+
+def test_apply_enrichment_sets_fields_and_resets_attempts_on_success() -> None:
+    item = _vocab_item(token="ephemeral")
+    item.enrichment_attempts = 2
+    mock_llm = MagicMock(spec=LLMClient)
+    mock_llm.complete.return_value = SimpleVocabExample(
+        token="ephemeral",
+        definition="Lasting briefly; transient and short-lived in nature.",
+        example="The cherry blossoms were ephemeral but stunning.",
+    )
+    now = datetime.now(UTC)
+
+    outcome = apply_enrichment(item, mock_llm, now=now)
+
+    assert outcome.ready is True
+    assert item.definition == "Lasting briefly; transient and short-lived in nature."
+    assert item.example_sentence == "The cherry blossoms were ephemeral but stunning."
+    assert item.enrichment_attempts == 0
+    assert item.last_enrichment_attempted_at == now
+
+
+def test_apply_enrichment_increments_attempts_on_failure() -> None:
+    item = _vocab_item(token="failword")
+    item.enrichment_attempts = 0
+    mock_llm = MagicMock(spec=LLMClient)
+    mock_llm.complete.side_effect = LLMValidationFailure("fail", attempts=3, last_error=None)
+    now = datetime.now(UTC)
+
+    outcome = apply_enrichment(item, mock_llm, now=now)
+
+    assert outcome.ready is False
+    assert outcome.llm_attempts == 3
+    assert item.enrichment_attempts == 1
+    assert item.definition == ""  # still pending
+    assert item.last_enrichment_attempted_at == now
