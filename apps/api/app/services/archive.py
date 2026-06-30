@@ -21,37 +21,22 @@ async def paginate_user_vocab(
     ).scalar_one()
 
     rows = (
-        await session.execute(
-            select(
-                VocabItem.id,
-                VocabItem.token,
-                VocabItem.language,
-                VocabItem.part_of_speech,
-                VocabItem.definition,
-                VocabItem.example_sentence,
+        (
+            await session.execute(
+                select(VocabItem)
+                .join(Review, Review.vocab_item_id == VocabItem.id)
+                .where(Review.user_id == user.id)
+                .order_by(VocabItem.created_at.desc())
+                .offset((page - 1) * page_size)
+                .limit(page_size)
             )
-            .join(Review, Review.vocab_item_id == VocabItem.id)
-            .where(Review.user_id == user.id)
-            .order_by(VocabItem.created_at.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
         )
-    ).all()
-
-    items = [
-        VocabRead(
-            id=vid,
-            token=token,
-            language=lang,
-            part_of_speech=pos,
-            definition=defn,
-            example_sentence=example,
-        )
-        for (vid, token, lang, pos, defn, example) in rows
-    ]
+        .scalars()
+        .all()
+    )
 
     return VocabListResponse(
-        items=items,
+        items=[VocabRead.model_validate(v) for v in rows],
         page=page,
         page_size=page_size,
         total=int(total),

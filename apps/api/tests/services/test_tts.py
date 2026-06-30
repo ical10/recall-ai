@@ -1,8 +1,27 @@
 from unittest.mock import patch
 
-from app.services.tts import GeminiEngine, synthesize
+from app.models.vocab_item import VocabItem
+from app.services.tts import GeminiEngine, ensure_audio, synthesize
 
 FAKE_AUDIO = b"\xff\xfb\x90\x00"
+
+
+def test_ensure_audio_fills_missing_then_is_idempotent() -> None:
+    item = VocabItem(token="cat", example_sentence="The cat sat.", definition="d")
+    calls: list[str] = []
+
+    def fake_synth(text: str) -> str:
+        calls.append(text)
+        return f"https://r2/{text}.mp3"
+
+    assert ensure_audio(item, synth=fake_synth) is True
+    assert item.word_audio_url == "https://r2/cat.mp3"
+    assert item.example_audio_url == "https://r2/The cat sat..mp3"
+    assert calls == ["cat", "The cat sat."]
+
+    calls.clear()
+    assert ensure_audio(item, synth=fake_synth) is False  # both already set
+    assert calls == []
 
 
 def test_synthesize_returns_empty_when_no_provider_configured() -> None:

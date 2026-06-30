@@ -3,10 +3,12 @@ from __future__ import annotations
 import logging
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 
 import boto3  # type: ignore[import-untyped]
 
 from app.core.config import get_settings
+from app.models.vocab_item import VocabItem
 
 logger = logging.getLogger(__name__)
 
@@ -122,3 +124,24 @@ def synthesize(text: str, *, voice: str | None = None) -> str:
                 logger.error("tts_exhausted", extra={"chars": char_count})
                 return ""
     return ""
+
+
+def ensure_audio(vocab: VocabItem, *, synth: Callable[[str], str] = synthesize) -> bool:
+    """Render any missing audio clips for one Vocab Item, idempotently.
+
+    The single home for the skip-if-already-rendered guard: synthesizes only the
+    clips whose URL is unset, mutates `vocab` in place, and returns True if anything
+    was rendered. No DB commit — the caller owns the transaction.
+    """
+    rendered = False
+    if not vocab.word_audio_url:
+        url = synth(vocab.token)
+        if url:
+            vocab.word_audio_url = url
+            rendered = True
+    if not vocab.example_audio_url:
+        url = synth(vocab.example_sentence or "")
+        if url:
+            vocab.example_audio_url = url
+            rendered = True
+    return rendered

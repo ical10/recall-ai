@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import secrets
 from datetime import UTC, datetime
+from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -49,8 +50,7 @@ def _google_consent_url(state: str) -> str:
         "access_type": "offline",
         "prompt": "consent",
     }
-    query = "&".join(f"{k}={v}" for k, v in params.items())
-    return f"{GOOGLE_AUTH_URL}?{query}"
+    return f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
 
 
 async def _exchange_code(code: str) -> dict[str, object]:

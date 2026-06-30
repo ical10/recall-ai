@@ -53,11 +53,7 @@ async def apply_ratings(
             skipped += 1
             continue
 
-        state = ReviewState(
-            ease_factor=review.ease_factor,
-            interval_days=review.interval_days,
-            repetitions=review.repetitions,
-        )
+        state = ReviewState.model_validate(review)
         update_result = compute_next_review(state, rating.grade)
 
         new_due_at = now + timedelta(days=update_result.interval_days)

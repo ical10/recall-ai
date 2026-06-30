@@ -10,9 +10,4 @@ router = APIRouter()
 async def api_me(user: OptionalUserDep) -> MeResponse | None:
     if user is None:
         return None
-    return MeResponse(
-        id=user.id,
-        email=user.email,
-        name=user.name,
-        avatar_url=user.avatar_url,
-    )
+    return MeResponse.model_validate(user)
