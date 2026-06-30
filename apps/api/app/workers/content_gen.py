@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.celery_app import celery_app
@@ -14,8 +13,8 @@ from app.core.db import SessionLocal
 from app.models.review import Review
 from app.models.user import User
 from app.models.vocab_item import VocabItem
-from app.schemas.llm import SimpleVocabExample
-from app.services.enrichment import enrich_vocab_item
+from app.services.enrichment import apply_enrichment
+from app.services.enrollment import enroll_new_vocab
 from app.services.llm import LLMClient, LLMValidationFailure
 from app.services.selection import select_unenriched
 from app.services.tts import synthesize
@@ -39,20 +38,15 @@ async def _run_daily(batch_size: int) -> dict[str, int]:
         llm = LLMClient()
         now = datetime.now(UTC)
         for item in items:
-            item.last_enrichment_attempted_at = now
-            try:
-                result = enrich_vocab_item(item, llm)
-                item.definition = result.definition
-                item.example_sentence = result.example
-                item.enrichment_attempts = 0
+            outcome = apply_enrichment(item, llm, now=now)
+            if outcome.ready:
                 succeeded += 1
-            except LLMValidationFailure as e:
-                item.enrichment_attempts += 1
+            else:
                 logger.warning(
                     "content_gen_item_failed",
                     extra={
                         "vocab_item_id": str(item.id),
-                        "attempts": e.attempts,
+                        "attempts": outcome.llm_attempts,
                         "total_attempts": item.enrichment_attempts,
                     },
                 )
@@ -109,7 +103,7 @@ async def _generate_shared_pool(count: int) -> dict[str, int | str]:
             return {"succeeded": 0, "failed": 1, "reason": "validation_exhausted"}
 
         user_ids = list((await session.execute(select(User.id))).scalars().all())
-        vocab_created, reviews_created = await _persist_batch_and_enroll(
+        vocab_created, reviews_created = await enroll_new_vocab(
             session, batch.items, source="shared_pool", user_ids=user_ids
         )
         await session.commit()
@@ -203,7 +197,7 @@ async def _generate_personalized_batch(
         )
         return {"succeeded": 0, "failed": 1, "reason": "validation_exhausted"}
 
-    vocab_created, reviews_created = await _persist_batch_and_enroll(
+    vocab_created, reviews_created = await enroll_new_vocab(
         session, batch.items, source="personalized", user_ids=[user.id]
     )
     return {"vocab_created": vocab_created, "reviews_created": reviews_created}
@@ -265,49 +259,6 @@ async def _generate_personalized_for_all(count: int) -> dict[str, int | str]:
             await session.commit()
 
     return {"total_vocab_created": total_created, "users_processed": users_processed}
-
-
-async def _persist_batch_and_enroll(
-    session: AsyncSession,
-    items: list[SimpleVocabExample],
-    *,
-    source: str,
-    user_ids: list,  # type: ignore[type-arg]
-) -> tuple[int, int]:
-    now = datetime.now(UTC)
-    vocab_created = 0
-    reviews_created = 0
-    for item in items:
-        # INSERT-time dedupe is the CORRECTNESS gate against duplicate tokens.
-        # The capped exclusion list in generate_vocab_batch is only a cost-saver;
-        # the LLM may still propose a token outside the recent-500 window. The
-        # unique constraint on (token, language) is the source of truth.
-        vocab = VocabItem(
-            token=item.token,
-            language="en",
-            definition=item.definition,
-            example_sentence=item.example,
-            source=source,
-        )
-        session.add(vocab)
-        try:
-            await session.flush()
-        except IntegrityError:
-            await session.rollback()
-            continue
-        vocab_created += 1
-        for uid in user_ids:
-            exists = (
-                await session.execute(
-                    select(func.count(Review.id)).where(
-                        Review.user_id == uid, Review.vocab_item_id == vocab.id
-                    )
-                )
-            ).scalar_one()
-            if exists == 0:
-                session.add(Review(user_id=uid, vocab_item_id=vocab.id, due_at=now))
-                reviews_created += 1
-    return vocab_created, reviews_created
 
 
 @celery_app.task(name="content_gen.render_audio")  # type: ignore[untyped-decorator]
