@@ -2,6 +2,13 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { fetchApi } from "./api/client";
 import { useReviewSession, type Card } from "./store/review";
+import {
+  cacheBatch,
+  getCachedBatch,
+  enqueue,
+  flushQueue,
+  getQueue,
+} from "./store/offline";
 
 interface DailyBatch {
   cards: Card[];
@@ -43,12 +50,15 @@ function useAudio() {
 function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [queueLength, setQueueLength] = useState(0);
 
   const { phase, cards, activeIndex, loadCards, reveal, nextCard } =
     useReviewSession();
   const { audioRef, play, stop } = useAudio();
 
   useEffect(() => {
+    getQueue().then((q) => setQueueLength(q.length));
+
     fetchApi<DailyBatch>("/api/review/batch")
       .then((data) => {
         if (data.cards.length === 0) {
@@ -56,9 +66,17 @@ function App() {
           useReviewSession.setState({ phase: "done" });
         } else {
           loadCards(data.cards);
+          cacheBatch(data.cards);
         }
       })
-      .catch((e) => setError(e.message))
+      .catch(async () => {
+        const cached = await getCachedBatch();
+        if (cached.length > 0) {
+          loadCards(cached);
+        } else {
+          setError("Failed to load review batch");
+        }
+      })
       .finally(() => setLoading(false));
   }, [loadCards]);
 
@@ -80,19 +98,27 @@ function App() {
     stop();
     const c = cards[activeIndex];
     if (!c) return;
-    fetchApi("/api/review/ratings", {
-      method: "POST",
-      body: JSON.stringify({
-        ratings: [
-          {
-            rating_id: crypto.randomUUID(),
-            card_id: c.review_id,
-            grade: quality,
-            rated_at: new Date().toISOString(),
-          },
-        ],
-      }),
-    }).catch(() => {});
+
+    const rating = {
+      rating_id: crypto.randomUUID(),
+      card_id: c.review_id,
+      grade: quality,
+      rated_at: new Date().toISOString(),
+    };
+
+    enqueue(rating).then(() => {
+      getQueue().then((q) => setQueueLength(q.length));
+    });
+
+    flushQueue(async (ratings) => {
+      await fetchApi("/api/review/ratings", {
+        method: "POST",
+        body: JSON.stringify({ ratings }),
+      });
+    }).then(() => {
+      setQueueLength(0);
+    });
+
     nextCard();
   };
 
@@ -117,6 +143,19 @@ function App() {
     return () => stop();
   }, [stop]);
 
+  useEffect(() => {
+    const flush = () => {
+      flushQueue(async (ratings) => {
+        await fetchApi("/api/review/ratings", {
+          method: "POST",
+          body: JSON.stringify({ ratings }),
+        });
+      }).then(() => setQueueLength(0));
+    };
+    window.addEventListener("online", flush);
+    return () => window.removeEventListener("online", flush);
+  }, []);
+
   if (loading) {
     return <div className="p-4 text-sm text-slate-500">Loading...</div>;
   }
@@ -132,6 +171,11 @@ function App() {
         <div className="text-sm text-slate-500">
           No more cards to review today.
         </div>
+        {queueLength > 0 && (
+          <div className="text-xs text-amber-600">
+            {queueLength} rating{queueLength > 1 ? "s" : ""} pending sync
+          </div>
+        )}
       </div>
     );
   }
