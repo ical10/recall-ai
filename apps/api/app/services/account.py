@@ -89,6 +89,10 @@ async def provision_user(session: AsyncSession, identity: GoogleIdentity) -> Use
     same basis. The caller owns verification (this never decodes a token) and any
     session/token issuance. Returns the persisted User.
     """
+    # Keyed on the verified Google `sub` (stable, never reused) — never email. NOTE:
+    # `sub` is shared across our web + extension OAuth clients ONLY if both live in the
+    # same Google Cloud project; a separate project issues a different sub for the same
+    # person and would split their account. Keep both clients in one project.
     user = (
         await session.execute(select(User).where(User.google_id == identity.sub))
     ).scalar_one_or_none()
