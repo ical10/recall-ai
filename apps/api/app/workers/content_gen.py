@@ -129,9 +129,6 @@ async def _generate_personalized(user_id: str, count: int = 5) -> dict[str, int 
             logger.warning("personalized_skipped_user_missing", extra={"user_id": user_id})
             return {"skipped": "user_missing"}
 
-        # Milestone idempotency: compute the user's CURRENT milestone (latest
-        # multiple of 30 reached) and short-circuit if we have already serviced it.
-        # Prevents Celery retries after partial commit from double-charging the LLM.
         total = (
             await session.execute(
                 select(func.count(Review.id)).where(
@@ -150,57 +147,123 @@ async def _generate_personalized(user_id: str, count: int = 5) -> dict[str, int 
                 "milestone": current_milestone,
             }
 
-        # Exclusion list: global vocab tokens PLUS this user's existing review
-        # tokens, capped at 500 most-recent. The user-scoped union prevents the
-        # LLM from re-proposing words the user already has via shared pool.
-        global_tokens = list(
-            (
-                await session.execute(
-                    select(VocabItem.token)
-                    .where(VocabItem.language == "en")
-                    .order_by(VocabItem.created_at.desc())
-                    .limit(500)
-                )
-            )
-            .scalars()
-            .all()
-        )
-        user_tokens = list(
-            (
-                await session.execute(
-                    select(VocabItem.token)
-                    .join(Review, Review.vocab_item_id == VocabItem.id)
-                    .where(Review.user_id == uid)
-                )
-            )
-            .scalars()
-            .all()
-        )
-        exclude_tokens = list({*global_tokens, *user_tokens})
-
         llm = LLMClient()
-        try:
-            batch = generate_vocab_batch(
-                llm,
-                language="en",
-                count=count,
-                exclude_tokens=exclude_tokens,
-                interests=user.interest_tags or None,
-            )
-        except LLMValidationFailure as e:
-            logger.warning(
-                "personalized_validation_exhausted",
-                extra={"user_id": user_id, "attempts": e.attempts},
-            )
-            return {"succeeded": 0, "failed": 1, "reason": "validation_exhausted"}
-
-        vocab_created, reviews_created = await _persist_batch_and_enroll(
-            session, batch.items, source="personalized", user_ids=[uid]
-        )
-        user.last_personalized_milestone = current_milestone
+        result = await _generate_personalized_batch(session, user, count, llm)
+        if "vocab_created" in result:
+            user.last_personalized_milestone = current_milestone
         await session.commit()
 
+    return result
+
+
+async def _generate_personalized_batch(
+    session: AsyncSession,
+    user: User,
+    count: int,
+    llm: LLMClient,
+) -> dict[str, int | str]:
+    global_tokens = list(
+        (
+            await session.execute(
+                select(VocabItem.token)
+                .where(VocabItem.language == "en")
+                .order_by(VocabItem.created_at.desc())
+                .limit(500)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    user_tokens = list(
+        (
+            await session.execute(
+                select(VocabItem.token)
+                .join(Review, Review.vocab_item_id == VocabItem.id)
+                .where(Review.user_id == user.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    exclude_tokens = list({*global_tokens, *user_tokens})
+
+    try:
+        batch = generate_vocab_batch(
+            llm,
+            language="en",
+            count=count,
+            exclude_tokens=exclude_tokens,
+            interests=user.interest_tags or None,
+        )
+    except LLMValidationFailure as e:
+        logger.warning(
+            "personalized_validation_exhausted",
+            extra={"user_id": str(user.id), "attempts": e.attempts},
+        )
+        return {"succeeded": 0, "failed": 1, "reason": "validation_exhausted"}
+
+    vocab_created, reviews_created = await _persist_batch_and_enroll(
+        session, batch.items, source="personalized", user_ids=[user.id]
+    )
     return {"vocab_created": vocab_created, "reviews_created": reviews_created}
+
+
+@celery_app.task(name="content_gen.generate_personalized_for_all")  # type: ignore[untyped-decorator]
+def generate_personalized_for_all(count: int = 5) -> dict[str, int | str]:
+    return asyncio.run(_generate_personalized_for_all(count))
+
+
+async def _generate_personalized_for_all(count: int) -> dict[str, int | str]:
+    async with SessionLocal() as session:
+        user_ids = list((await session.execute(select(User.id))).scalars().all())
+
+    if not user_ids:
+        return {"total_vocab_created": 0, "users_processed": 0}
+
+    total_created = 0
+    users_processed = 0
+    start_of_day = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    for uid in user_ids:
+        async with SessionLocal() as session:
+            user = await session.get(User, uid)
+            if user is None:
+                continue
+
+            existing = (
+                (
+                    await session.execute(
+                        select(VocabItem)
+                        .join(Review, Review.vocab_item_id == VocabItem.id)
+                        .where(VocabItem.source == "personalized", Review.user_id == uid)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if any(
+                v.created_at is not None
+                and (
+                    (v.created_at.tzinfo is not None and v.created_at >= start_of_day)
+                    or (
+                        v.created_at.tzinfo is None
+                        and v.created_at.replace(tzinfo=UTC) >= start_of_day
+                    )
+                )
+                for v in existing
+            ):
+                continue
+
+            llm = LLMClient()
+
+            result = await _generate_personalized_batch(session, user, count, llm)
+            vc = result.get("vocab_created")
+            if isinstance(vc, int):
+                total_created += vc
+                users_processed += 1
+            await session.commit()
+
+    return {"total_vocab_created": total_created, "users_processed": users_processed}
 
 
 async def _persist_batch_and_enroll(

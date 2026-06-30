@@ -32,5 +32,12 @@ celery_app.conf.update(
             "schedule": crontab(hour=18, minute=0),
             "kwargs": {"count": 10},
         },
+        "content-gen-personalized-all": {
+            "task": "content_gen.generate_personalized_for_all",
+            # 20:00 UTC — after the shared pool and enrichment ticks complete,
+            # giving the LLM fresh exclusion context.
+            "schedule": crontab(hour=20, minute=0),
+            "kwargs": {"count": 5},
+        },
     },
 )
