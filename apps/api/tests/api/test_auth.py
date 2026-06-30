@@ -10,6 +10,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -22,6 +23,7 @@ from app.core.db import get_session
 from app.models import Base
 from app.models.review import Review
 from app.models.user import User
+from app.services.google_identity import GoogleIdentity
 
 TEST_SECRET = "test-auth-secret"
 TEST_STATE = "known-state"
@@ -48,6 +50,27 @@ def _fake_id_token(sub: str, email: str, name: str) -> str:
     )
     sig = base64.urlsafe_b64encode(b"x").decode().rstrip("=")
     return f"{header}.{payload}.{sig}"
+
+
+@pytest.fixture(autouse=True)
+def _mock_google_verify():  # type: ignore[no-untyped-def]
+    """Mock the verification seam for every test: decode the fake id_token's payload.
+    The real google-auth signature/JWKS/audience path is covered in test_google_identity.py.
+    """
+
+    def _decode(raw, **_kwargs):  # type: ignore[no-untyped-def]
+        payload_b64 = raw.split(".")[1]
+        payload_b64 += "=" * (4 - len(payload_b64) % 4)
+        p = json.loads(base64.urlsafe_b64decode(payload_b64))
+        return GoogleIdentity(
+            sub=p["sub"],
+            email=p.get("email", ""),
+            name=p.get("name", ""),
+            picture=p.get("picture"),
+        )
+
+    with patch("app.api.auth.verify_google_id_token", side_effect=_decode):
+        yield
 
 
 def _make_app(
