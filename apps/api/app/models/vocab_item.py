@@ -17,7 +17,8 @@ class VocabItem(Base, TimestampMixin):
     part_of_speech: Mapped[str | None] = mapped_column(String(32), nullable=True)
     definition: Mapped[str] = mapped_column(Text, nullable=False)
     example_sentence: Mapped[str | None] = mapped_column(Text, nullable=True)
-    audio_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    word_audio_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    example_audio_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     enrichment_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     last_enrichment_attempted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

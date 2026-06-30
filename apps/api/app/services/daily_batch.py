@@ -23,6 +23,8 @@ async def build_daily_batch(session: AsyncSession, user: User) -> DailyBatch:
                 Review.interval_days,
                 Review.repetitions,
                 Review.due_at,
+                VocabItem.word_audio_url,
+                VocabItem.example_audio_url,
             )
             .join(VocabItem, Review.vocab_item_id == VocabItem.id)
             .where(
@@ -47,8 +49,8 @@ async def build_daily_batch(session: AsyncSession, user: User) -> DailyBatch:
             interval_days=interval_days,
             repetitions=repetitions,
             due_at=due_at,
-            word_audio_url=None,
-            example_audio_url=None,
+            word_audio_url=word_audio_url,
+            example_audio_url=example_audio_url,
         )
         for (
             review_id,
@@ -60,6 +62,8 @@ async def build_daily_batch(session: AsyncSession, user: User) -> DailyBatch:
             interval_days,
             repetitions,
             due_at,
+            word_audio_url,
+            example_audio_url,
         ) in rows
     ]
 

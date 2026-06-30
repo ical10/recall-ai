@@ -8,6 +8,7 @@ import { RatingButton } from "@/components/ui/RatingButton";
 import { Washi } from "@/components/ui/Washi";
 import { Chip } from "@/components/ui/Chip";
 import { DoneCard } from "@/components/DoneCard";
+import { useAudioQueue } from "@/components/useAudioQueue";
 
 interface DailyBatch {
   cards: Card[];
@@ -22,11 +23,22 @@ export function ReviewPage() {
   const { phase, cards, activeIndex, completed, loadCards, reveal, nextCard } =
     useReviewSession();
 
+  const { audioRef, play } = useAudioQueue();
+
   useEffect(() => {
     if (data?.cards) {
       loadCards(data.cards);
     }
   }, [data, loadCards]);
+
+  useEffect(() => {
+    if (phase === "revealed") {
+      const c = cards[activeIndex];
+      if (c) {
+        play([c.word_audio_url || "", c.example_audio_url || ""]);
+      }
+    }
+  }, [phase, activeIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRate = useCallback(
     (quality: number) => {
@@ -91,6 +103,7 @@ export function ReviewPage() {
 
   return (
     <main className="max-w-2xl mx-auto px-4 py-8">
+      <audio ref={audioRef} className="hidden" />
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-display font-black text-ink">Review</h1>
