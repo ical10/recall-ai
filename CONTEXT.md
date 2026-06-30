@@ -24,6 +24,10 @@ A Review whose `due_at` is null or in the past. Null `due_at` means "never revie
 **Suspended**:
 A per-user flag on a Review that excludes it from the review queue without deleting it.
 
+**Enrollment**:
+Creating a Review that links a User to a shared Vocab Item — enrolling all users in newly generated shared-pool items, or seeding a new user's starter deck. Exactly one Review per `(user, vocab_item)`; re-enrolling is a no-op.
+_Avoid_: subscribe, assign
+
 **User Timezone**:
 Each User has a `timezone` (IANA name, default `"UTC"`). All user-facing date bucketing — streak day boundaries, "due today" cutoff — is evaluated in this timezone. The nightly content-gen cron is global and stays UTC-anchored. See [ADR-0004](./docs/adr/0004-per-user-timezone-on-user-model.md).
 
@@ -36,6 +40,7 @@ An in-session retry mechanism layered on top of SM-2. When the user rates a card
 ## Relationships
 
 - A **Vocab Item** is shared across users; a **Review** is per-user (unique on `(user_id, vocab_item_id)`)
+- Adding a shared-pool **Vocab Item** **enrolls** every user — one new **Review** each (idempotent on the unique constraint)
 - A **Vocab Item** progresses through one **Enrichment**: pending → ready
 - A **Review** appears in `/review` only when its Vocab Item is **ready** AND the Review is **due** AND not **suspended**
 - A **Quality Rating** drives the SM-2 update that sets the next `due_at` and `interval_days` on a Review
