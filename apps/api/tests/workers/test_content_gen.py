@@ -14,7 +14,12 @@ from app.models.user import User
 from app.models.vocab_item import VocabItem
 from app.schemas.llm import GeneratedVocabBatch, SimpleVocabExample
 from app.services.llm import LLMValidationFailure
-from app.workers.content_gen import _generate_personalized, _generate_shared_pool, _run_daily
+from app.workers.content_gen import (
+    _generate_personalized,
+    _generate_personalized_for_all,
+    _generate_shared_pool,
+    _run_daily,
+)
 
 
 @pytest.fixture()
@@ -469,3 +474,100 @@ def test_generate_shared_pool_inserts_vocab_and_enrolls_all_users(
             assert len(reviews) == 6
 
     asyncio.run(_check())
+
+
+def test_generate_personalized_for_all_creates_vocab_for_each_user(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async def _seed() -> None:
+        async with session_factory() as s:
+            u1 = User(
+                id=uuid.uuid4(),
+                email="a@b.com",
+                google_id="ga",
+                name="a",
+                interest_tags=["food"],
+            )
+            u2 = User(
+                id=uuid.uuid4(),
+                email="c@d.com",
+                google_id="gc",
+                name="c",
+                interest_tags=["animals"],
+            )
+            s.add_all([u1, u2])
+            await s.commit()
+
+    asyncio.run(_seed())
+
+    with (
+        patch("app.workers.content_gen.SessionLocal", session_factory),
+        patch("app.workers.content_gen.LLMClient") as mock_cls,
+    ):
+        mock_instance = mock_cls.return_value
+        mock_instance.complete.side_effect = [
+            _batch(["pizza", "pasta"]),
+            _batch(["elephant", "giraffe"]),
+        ]
+        result = asyncio.run(_generate_personalized_for_all(count=2))
+
+    assert result["total_vocab_created"] == 4
+    assert result["users_processed"] == 2
+
+    async def _check() -> None:
+        async with session_factory() as s:
+            vocab = (await s.execute(select(VocabItem))).scalars().all()
+            assert len(vocab) == 4
+            assert all(v.source == "personalized" for v in vocab)
+            reviews = (await s.execute(select(Review))).scalars().all()
+            assert len(reviews) == 4
+            user_ids = {str(r.user_id) for r in reviews}
+            assert len(user_ids) == 2
+
+    asyncio.run(_check())
+
+
+def test_generate_personalized_for_all_skips_on_same_day_idempotency(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async def _seed() -> None:
+        async with session_factory() as s:
+            u = _user(email="u@b.com", google_id="gu")
+            s.add(u)
+            await s.commit()
+            vocab = VocabItem(
+                id=uuid.uuid4(),
+                token="already-done",
+                language="en",
+                definition="A definition long enough to clear validation.",
+                example_sentence="The already-done token appears in this example.",
+                source="personalized",
+            )
+            s.add(vocab)
+            await s.flush()
+            s.add(Review(user_id=u.id, vocab_item_id=vocab.id, due_at=datetime.now(UTC)))
+            await s.commit()
+
+    asyncio.run(_seed())
+
+    with (
+        patch("app.workers.content_gen.SessionLocal", session_factory),
+        patch("app.workers.content_gen.LLMClient") as mock_cls,
+    ):
+        result = asyncio.run(_generate_personalized_for_all(count=2))
+        mock_cls.assert_not_called()
+
+    assert result == {"total_vocab_created": 0, "users_processed": 0}
+
+
+def test_generate_personalized_for_all_handles_no_users(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    with (
+        patch("app.workers.content_gen.SessionLocal", session_factory),
+        patch("app.workers.content_gen.LLMClient") as mock_cls,
+    ):
+        result = asyncio.run(_generate_personalized_for_all(count=5))
+        mock_cls.assert_not_called()
+
+    assert result == {"total_vocab_created": 0, "users_processed": 0}
