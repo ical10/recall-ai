@@ -6,13 +6,13 @@
     "node": "22"
   },
   "steps": {
-    "build_css": {
+    "build_spa": {
       "inputs": [
         { "step": "install" }
       ],
       "commands": [
         "npx -y pnpm@9.0.0 install --frozen-lockfile",
-        "npx -y pnpm@9.0.0 run build:css:prod"
+        "npx -y pnpm@9.0.0 run build"
       ]
     }
   },
