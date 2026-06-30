@@ -85,7 +85,7 @@ def synthesize(text: str, *, voice: str | None = None) -> str:
     if not provider or not text.strip():
         return ""
 
-    voice = voice or settings.voice_agent_voice
+    voice = voice or settings.voice_agent_model
     engine = _ENGINES.get(provider)
     if engine is None:
         logger.warning("tts_unknown_provider", extra={"provider": provider})

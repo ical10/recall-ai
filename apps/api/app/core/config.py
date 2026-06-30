@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     session_https_only: bool = False
     voice_agent_provider: str = ""
     voice_agent_api_key: SecretStr = SecretStr("")
-    voice_agent_voice: str = "en-US-Standard-H"  # kid-friendly default
+    voice_agent_model: str = "en-US-Standard-H"
     r2_access_key_id: str = ""
     r2_secret_access_key: SecretStr = SecretStr("")
     r2_bucket: str = ""

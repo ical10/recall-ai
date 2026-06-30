@@ -27,7 +27,7 @@ def test_synthesize_calls_engine_and_returns_url() -> None:
         patch("app.services.tts._upload_to_r2", return_value=audio_url) as mock_upload,
     ):
         mock_settings.return_value.voice_agent_provider = "gemini"
-        mock_settings.return_value.voice_agent_voice = "en-US-Standard-H"
+        mock_settings.return_value.voice_agent_model = "en-US-Standard-H"
         result = synthesize("hello")
     assert result == audio_url
     mock_synth.assert_called_once_with("hello", "en-US-Standard-H")
