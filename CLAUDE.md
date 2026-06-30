@@ -104,3 +104,17 @@
 - migrations are never edited after being applied to any environment — write a new migration instead
 - ai-generated code touching auth or user data is rewritten by hand before being accepted
 - no comments by default — only where code would be genuinely hard to understand without one
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs live as GitHub issues in `ical10/recall-ai` via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical roles, default strings (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: glossary in `CONTEXT.md`, ADRs inline in this file's architecture-decisions section. See `docs/agents/domain.md`.

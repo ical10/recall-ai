@@ -4,19 +4,18 @@
   "private": true,
   "packageManager": "pnpm@9.0.0",
   "scripts": {
-    "dev": "docker compose up -d && concurrently -n 'css,api' -c 'cyan,green' 'pnpm watch:css' 'uv run uvicorn app.main:app --app-dir apps/api --reload --reload-dir apps/api/app --port 8000'",
-    "build:css": "tailwindcss -c apps/api/tailwind.config.js -i apps/api/static/css/input.css -o apps/api/static/css/output.css",
-    "build:css:prod": "tailwindcss -c apps/api/tailwind.config.js -i apps/api/static/css/input.css -o apps/api/static/css/output.css --minify",
-    "watch:css": "tailwindcss -c apps/api/tailwind.config.js -i apps/api/static/css/input.css -o apps/api/static/css/output.css --watch",
+    "dev": "docker compose up -d && concurrently -n 'api,web' -c 'green,magenta' 'uv run uvicorn app.main:app --app-dir apps/api --reload --reload-dir apps/api/app --port 8000' 'pnpm --filter web dev'",
     "start": "uv run uvicorn app.main:app --app-dir apps/api --host 0.0.0.0 --port ${PORT:-8000}",
     "worker": "docker compose up -d && uv run --project . celery -A app.core.celery_app:celery_app --workdir apps/api worker --loglevel=info",
     "beat": "docker compose up -d && uv run --project . celery -A app.core.celery_app:celery_app --workdir apps/api beat --loglevel=info",
     "test": "uv run pytest -v",
-    "lint": "uv run ruff check apps/api && uv run ruff format --check apps/api && uv run mypy apps/api/app"
+    "test:web": "pnpm --filter web test",
+    "lint": "uv run ruff check apps/api && uv run ruff format --check apps/api && uv run mypy apps/api/app",
+    "build": "pnpm --filter web build",
+    "gen:types": "openapi-typescript http://localhost:8000/openapi.json -o apps/web/src/api/schema.d.ts"
   },
   "devDependencies": {
-    "concurrently": "9.2.1",
-    "tailwindcss": "3.4.19",
-    "turbo": "2.9.8"
+    "concurrently": "10.0.3",
+    "turbo": "2.10.0"
   }
 }

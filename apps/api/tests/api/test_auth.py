@@ -1,4 +1,4 @@
-"""Tests for auth routes: login, callback, logout, login-page."""
+"""Tests for auth routes: login, callback, logout."""
 
 from __future__ import annotations
 
@@ -73,9 +73,7 @@ def _make_app(
 
         @app.exception_handler(401)
         async def unauthenticated_handler(request: Request, _exc: Exception) -> Response:
-            if request.headers.get("hx-request"):
-                return Response(status_code=401, headers={"HX-Redirect": "/auth/login-page"})
-            return RedirectResponse(url="/auth/login-page", status_code=302)
+            return RedirectResponse(url="/login", status_code=302)
 
     async def override_get_session() -> AsyncIterator[AsyncSession]:
         async with factory() as session:
@@ -206,22 +204,8 @@ def test_logout_clears_session_and_redirects(tmp_path: Path) -> None:
     app, _ = _make_app(str(tmp_path / "db.sqlite"))
     with TestClient(app) as c:
         response = c.get("/auth/logout", follow_redirects=False)
-    assert response.status_code == 307
-    assert response.headers["location"] == "/"
-
-
-# ---------------------------------------------------------------------------
-# GET /auth/login-page
-# ---------------------------------------------------------------------------
-
-
-def test_login_page_renders(tmp_path: Path) -> None:
-    _setup_env()
-    app, _ = _make_app(str(tmp_path / "db.sqlite"))
-    with TestClient(app) as c:
-        response = c.get("/auth/login-page")
-    assert response.status_code == 200
-    assert "Sign in with Google" in response.text
+    assert response.status_code == 302
+    assert response.headers["location"] == "/login"
 
 
 # ---------------------------------------------------------------------------
@@ -248,33 +232,12 @@ def test_401_handler_redirects_full_page(tmp_path: Path) -> None:
         response = c.get("/_test_protected", follow_redirects=False)
 
     assert response.status_code == 302
-    assert response.headers["location"] == "/auth/login-page"
+    assert response.headers["location"] == "/login"
 
 
-def test_401_handler_returns_hx_redirect(tmp_path: Path) -> None:
-    _setup_env()
-    app, _ = _make_app(str(tmp_path / "db.sqlite"), with_401_handler=True)
-
-    def raise_401() -> User:
-        from fastapi import HTTPException
-
-        raise HTTPException(status_code=401)
-
-    app.dependency_overrides[get_current_user] = raise_401
-
-    @app.get("/_test_protected2")
-    async def protected2(user: UserDep) -> dict[str, str]:
-        return {"ok": "true"}
-
-    with TestClient(app) as c:
-        response = c.get(
-            "/_test_protected2",
-            headers={"HX-Request": "true"},
-            follow_redirects=False,
-        )
-
-    assert response.status_code == 401
-    assert response.headers["hx-redirect"] == "/auth/login-page"
+# ---------------------------------------------------------------------------
+# callback lifecycle tests
+# ---------------------------------------------------------------------------
 
 
 def test_callback_seeds_starter_vocab_for_new_user(tmp_path: Path) -> None:
@@ -364,10 +327,6 @@ def test_callback_does_not_reseed_existing_user_with_reviews(tmp_path: Path) -> 
 def test_callback_heals_empty_definitions_on_returning_user_with_reviews(
     tmp_path: Path,
 ) -> None:
-    """A returning user whose existing Reviews point at empty-definition
-    starter VocabItems must have those definitions healed on next login.
-    Otherwise the dashboard's definition!='' filter keeps hiding their cards.
-    """
     _setup_env()
     app, factory = _make_app(str(tmp_path / "db.sqlite"))
 
@@ -418,11 +377,6 @@ def test_callback_heals_empty_definitions_on_returning_user_with_reviews(
 def test_callback_heals_empty_definitions_on_existing_starter_vocab_items(
     tmp_path: Path,
 ) -> None:
-    """If starter-token VocabItems already exist with empty definitions
-    (e.g. created by scripts/seed_vocab.py during dev_reset), the auth
-    callback must populate them from the canonical STARTER_VOCAB so the
-    dashboard's definition!='' filter does not hide the new user's cards.
-    """
     _setup_env()
     app, factory = _make_app(str(tmp_path / "db.sqlite"))
 

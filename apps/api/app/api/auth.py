@@ -7,11 +7,11 @@ from datetime import UTC, datetime
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import SessionDep, templates
+from app.api.deps import SessionDep
 from app.core.config import get_settings
 from app.models.review import Review
 from app.models.user import User
@@ -202,9 +202,4 @@ async def callback(
 @router.get("/auth/logout")
 async def logout(request: Request) -> RedirectResponse:
     request.session.clear()
-    return RedirectResponse(url="/", status_code=307)
-
-
-@router.get("/auth/login-page")
-async def login_page(request: Request) -> Response:
-    return templates.TemplateResponse(request, "pages/login.html")
+    return RedirectResponse(url="/login", status_code=302)

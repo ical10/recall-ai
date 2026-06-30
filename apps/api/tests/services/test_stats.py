@@ -145,7 +145,7 @@ def test_due_today_excludes_unenriched_vocab(tmp_path: Path) -> None:
     assert stats.due_today == 1
 
 
-def test_due_today_null_due_at_not_counted(tmp_path: Path) -> None:
+def test_due_today_null_due_at_counted_as_due(tmp_path: Path) -> None:
     factory = _make_factory(str(tmp_path / "db.sqlite"))
     user = asyncio.run(_insert_user(factory))
     today = date(2026, 5, 14)
@@ -156,7 +156,7 @@ def test_due_today_null_due_at_not_counted(tmp_path: Path) -> None:
 
     asyncio.run(setup())
     stats = asyncio.run(_get_stats(factory, user, today=today, review_dates=set()))
-    assert stats.due_today == 0
+    assert stats.due_today == 1
 
 
 # ---------------------------------------------------------------------------
