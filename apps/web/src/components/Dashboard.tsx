@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { fetchApi } from "@/api/client";
-import type { components } from "@/api/schema";
+import type { components } from "@recall-ai/shared/api-types";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Marker } from "@/components/ui/Marker";

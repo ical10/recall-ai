@@ -1,37 +1,31 @@
 {
-  "name": "@recall-ai/web",
+  "name": "@recall-ai/extension",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "vitest run"
   },
   "dependencies": {
     "@recall-ai/shared": "workspace:^",
     "@tanstack/react-query": "^5.101.2",
-    "@tanstack/react-router": "^1.170.16",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.3.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
+    "@types/chrome": "^0.2.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
-    "autoprefixer": "^10.5.2",
     "jsdom": "^29.1.1",
-    "openapi-typescript": "^7.13.0",
-    "postcss": "^8.5.16",
-    "tailwindcss": "^4.3.1",
     "typescript": "~6.0.3",
     "vite": "^8.1.0",
+    "vite-plugin-static-copy": "^4.1.1",
     "vitest": "^4.1.9"
   }
 }

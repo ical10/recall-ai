@@ -12,7 +12,7 @@
     "test:web": "pnpm --filter web test",
     "lint": "uv run ruff check apps/api && uv run ruff format --check apps/api && uv run mypy apps/api/app",
     "build": "pnpm --filter web build",
-    "gen:types": "openapi-typescript http://localhost:8000/openapi.json -o apps/web/src/api/schema.d.ts"
+    "gen:types": "openapi-typescript http://localhost:8000/openapi.json -o packages/shared/api-types/schema.d.ts"
   },
   "devDependencies": {
     "concurrently": "10.0.3",

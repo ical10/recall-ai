@@ -1,0 +1,8 @@
+{
+  "name": "@recall-ai/shared",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    "./api-types": "./api-types/schema.d.ts"
+  }
+}
