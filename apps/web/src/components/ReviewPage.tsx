@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchApi } from "@/api/client";
 import { useReviewSession, type Card } from "@/store/reviewSession";
@@ -23,7 +23,21 @@ export function ReviewPage() {
   const { phase, cards, activeIndex, completed, loadCards, reveal, nextCard } =
     useReviewSession();
 
-  const { audioRef, play } = useAudioQueue();
+  const { audioRef, play, stop } = useAudioQueue();
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    const onPlay = () => setPlaying(true);
+    const onEnded = () => setPlaying(false);
+    a.addEventListener("play", onPlay);
+    a.addEventListener("ended", onEnded);
+    return () => {
+      a.removeEventListener("play", onPlay);
+      a.removeEventListener("ended", onEnded);
+    };
+  }, []);
 
   useEffect(() => {
     if (data?.cards) {
@@ -139,8 +153,20 @@ export function ReviewPage() {
           washi={<Washi color="teal" className="-top-3 -right-3 tilt-r" />}
           className="min-h-[240px] flex flex-col items-center justify-center text-center"
         >
-          <div className="text-3xl font-display font-black text-ink mb-2">
+          <div className="text-3xl font-display font-black text-ink mb-2 flex items-center gap-2">
             {card.token}
+            {(card.word_audio_url || card.example_audio_url) && (
+              <button
+                onClick={() => {
+                  if (playing) stop();
+                  else play([card.word_audio_url || "", card.example_audio_url || ""]);
+                }}
+                className="text-sm px-2 py-1 rounded-lg border-2 border-ink hover:bg-cream-100"
+                title={playing ? "Stop" : "Replay"}
+              >
+                {playing ? "⏹" : "🔊"}
+              </button>
+            )}
           </div>
           <p className="text-lg text-ink-soft mb-4">{card.definition}</p>
           {card.example_sentence && (
