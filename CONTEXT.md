@@ -34,8 +34,8 @@ Each User has a `timezone` (IANA name, default `"UTC"`). All user-facing date bu
 **Quality Rating**:
 The user's self-assessed recall difficulty for a Review, expressed on the SM-2 scale: Again (0), Hard (2), Good (4), Easy (5). Again resets repetitions; Hard counts as a pass with a small ease/interval penalty; Good and Easy progress normally. See [ADR-0006](./docs/adr/0006-hard-rating-as-anki-like-penalty.md).
 
-**Again Re-queue**:
-An in-session retry mechanism layered on top of SM-2. When the user rates a card "Again" (quality=0), the row still gets the canonical SM-2 1-day push, but the card is also held in a short-lived per-session list and resurfaced ~10 minutes later in the same browser session. Persisted in a signed session cookie. See [ADR-0002](./docs/adr/0002-session-cookie-again-requeue.md).
+**Again Re-queue** _(legacy — not in the current React/JSON path)_:
+An in-session retry mechanism layered on top of SM-2 from the original HTMX review page (removed in #44). The user rates a card "Again" (quality=0); the row still gets the canonical SM-2 1-day push, but the card was also held in a short-lived per-session list and resurfaced ~10 minutes later via a signed session cookie. The React/JSON path (`daily_batch`) has no resurface logic — only the SM-2 row update applies. See [ADR-0002](./docs/adr/0002-session-cookie-again-requeue.md) for status.
 
 ## Relationships
 

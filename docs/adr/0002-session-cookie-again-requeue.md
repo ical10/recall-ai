@@ -1,5 +1,13 @@
 # In-session "Again" re-queue via signed session cookie
 
+> **Status (2026-06-30): legacy / not implemented in the React + JSON path.** This cookie
+> re-queue belonged to the original HTMX review page, removed in #44. The current
+> `daily_batch` builder orders due cards by `due_at` with no in-session resurface, and
+> `rating_sync` only applies the canonical SM-2 row update (interval=1d on AGAIN). No code
+> reads or writes the resurface cookie. Revisit only if active-drill UX needs in-session
+> retry again — most likely client-side in the React SPA, not a server cookie. Kept for
+> historical context; the decision below describes the HTMX-era design.
+
 Canonical SM-2 sets `interval_days = 1` for any quality < 3, which means a card the user just failed disappears for 24 hours — bad UX for active drilling. We add an in-session re-queue: rating a card "Again" (quality=0) still applies the canonical SM-2 update on the row (interval=1d, repetitions=0), but also appends the review's id to a per-session list held in a signed session cookie, with a `resurface_at = now + 10min` timestamp. The review-page handler prefers cookie entries whose timestamp has elapsed over DB-due rows, so the card comes back within the same browser session without polluting the long-term schedule.
 
 Considered (a) literal SM-2 with no in-session retry — rejected for UX; (b) a learning-step table or `interval_minutes` column — rejected as too invasive for v1; (c) overriding `due_at` to `now + 10min` instead of `now + 1day` — rejected because it conflates "session-local" with "scheduled" state. The cookie approach keeps SM-2 untouched, holds the queue close to the user (lost when the cookie expires after 4h), and can be swapped for Redis or a table later without changing the algorithm.

@@ -3,43 +3,15 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import delete, func, select
+from fastapi import APIRouter, HTTPException
+from sqlalchemy import delete, select
 
 from app.api.deps import SessionDep, UserDep
 from app.models.review import Review
 from app.models.vocab_item import VocabItem
-from app.schemas.vocab import VocabCreate, VocabListResponse, VocabRead
+from app.schemas.vocab import VocabCreate, VocabRead
 
 router = APIRouter()
-
-
-@router.get("/vocab", response_model=VocabListResponse)
-async def list_vocab(
-    session: SessionDep,
-    _user: UserDep,
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-) -> VocabListResponse:
-    total = (await session.execute(select(func.count(VocabItem.id)))).scalar_one()
-    rows = (
-        (
-            await session.execute(
-                select(VocabItem)
-                .order_by(VocabItem.created_at.desc())
-                .offset((page - 1) * page_size)
-                .limit(page_size)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    return VocabListResponse(
-        items=[VocabRead.model_validate(r) for r in rows],
-        page=page,
-        page_size=page_size,
-        total=int(total),
-    )
 
 
 @router.post("/vocab", status_code=201, response_model=VocabRead)

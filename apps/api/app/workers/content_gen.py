@@ -17,7 +17,7 @@ from app.services.enrichment import apply_enrichment
 from app.services.enrollment import enroll_new_vocab
 from app.services.llm import LLMClient, LLMValidationFailure
 from app.services.selection import select_unenriched
-from app.services.tts import synthesize
+from app.services.tts import ensure_audio
 from app.services.vocab_generation import generate_vocab_batch
 
 logger = logging.getLogger(__name__)
@@ -276,21 +276,13 @@ async def _render_audio(vocab_item_id: str) -> dict[str, str]:
         if vocab.word_audio_url and vocab.example_audio_url:
             return {"status": "already_rendered"}
 
-        word_url = synthesize(vocab.token) if not vocab.word_audio_url else ""
-        example_url = (
-            synthesize(vocab.example_sentence or "") if not vocab.example_audio_url else ""
-        )
-
-        if word_url:
-            vocab.word_audio_url = word_url
-        if example_url:
-            vocab.example_audio_url = example_url
+        rendered = ensure_audio(vocab)
         await session.commit()
 
     return {
-        "status": "rendered",
-        "word_audio_url": word_url or "",
-        "example_audio_url": example_url or "",
+        "status": "rendered" if rendered else "skipped",
+        "word_audio_url": vocab.word_audio_url or "",
+        "example_audio_url": vocab.example_audio_url or "",
     }
 
 
@@ -323,16 +315,7 @@ async def _backfill_audio(batch_size: int) -> dict[str, int]:
             if vocab is None:
                 continue
 
-            word_url = synthesize(vocab.token) if not vocab.word_audio_url else ""
-            example_url = (
-                synthesize(vocab.example_sentence or "") if not vocab.example_audio_url else ""
-            )
-
-            if word_url or example_url:
-                if word_url:
-                    vocab.word_audio_url = word_url
-                if example_url:
-                    vocab.example_audio_url = example_url
+            if ensure_audio(vocab):
                 rendered += 1
             else:
                 skipped += 1

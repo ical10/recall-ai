@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, func, select
@@ -10,50 +10,7 @@ from app.models.review import Review
 from app.models.user import User
 from app.models.vocab_item import VocabItem
 from app.schemas.stats import RecentRating, UserStats
-from app.services.due import due_today_conditions
-
-
-async def _fetch_review_dates(
-    session: AsyncSession,
-    user: User,
-    user_tz: ZoneInfo,
-) -> set[date]:
-    engine = session.get_bind()
-    dialect = engine.dialect.name if engine is not None else "postgresql"
-
-    if dialect == "sqlite":
-        raw_timestamps = (
-            (
-                await session.execute(
-                    select(Review.last_reviewed_at).where(
-                        Review.user_id == user.id,
-                        Review.last_reviewed_at.is_not(None),
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        return {
-            ts.replace(tzinfo=UTC).astimezone(user_tz).date()
-            for ts in raw_timestamps
-            if ts is not None
-        }
-
-    local_review_date = func.date(func.timezone(user.timezone, Review.last_reviewed_at))
-    raw_dates = (
-        (
-            await session.execute(
-                select(local_review_date)
-                .where(Review.user_id == user.id, Review.last_reviewed_at.is_not(None))
-                .group_by(local_review_date)
-                .order_by(local_review_date.desc())
-            )
-        )
-        .scalars()
-        .all()
-    )
-    return {d if isinstance(d, date) else date.fromisoformat(str(d)) for d in raw_dates}
+from app.services.due import due_today_conditions, reviewed_local_dates
 
 
 async def compute_user_stats(
@@ -87,7 +44,7 @@ async def compute_user_stats(
     ).scalar_one()
 
     if review_dates is None:
-        review_dates = await _fetch_review_dates(session, user, user_tz)
+        review_dates = await reviewed_local_dates(session, user)
 
     streak = _compute_streak(review_dates, today)
 
