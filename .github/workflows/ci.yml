@@ -67,6 +67,12 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Build SPA
+        # Same command railpack runs to produce apps/web/dist for FastAPI to
+        # serve. Keeps CI and the Railway build aligned so a broken/renamed
+        # build script fails here instead of at deploy.
+        run: pnpm run build
+
   migration-check:
     name: Migration Check
     runs-on: ubuntu-latest
