@@ -23,15 +23,13 @@ export function LoginPage() {
 
       <div className="relative w-full max-w-md">
         <Card size="lg" tilt="l-2" animate="pop-in" washi={<Washi color="berry" className="-top-4 left-12 tilt-r-2" />}>
-          <Eyebrow>Welcome back</Eyebrow>
+          <Eyebrow>Spaced-repetition vocabulary</Eyebrow>
           <h1 className="mt-3 font-display text-5xl font-black leading-[0.95] text-ink">
-            Pick up
-            <br />
-            where you{" "}
-            <Marker>left off</Marker>.
+            Words that <Marker>stick</Marker>.
           </h1>
           <p className="mt-4 leading-relaxed text-ink-soft">
-            One sign-in. Your deck, your streak, and the words waiting on you.
+            Catch each new word right before you forget it — your deck and streak
+            are waiting.
           </p>
 
           <div className="mt-7">
