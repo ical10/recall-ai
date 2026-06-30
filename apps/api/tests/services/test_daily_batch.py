@@ -64,6 +64,7 @@ async def _insert_review(
     vocab_id: uuid.UUID,
     *,
     due_at: datetime | None = None,
+    last_reviewed_at: datetime | None = None,
     ease_factor: float = 2.5,
     interval_days: int = 1,
     repetitions: int = 0,
@@ -75,6 +76,7 @@ async def _insert_review(
                 user_id=user_id,
                 vocab_item_id=vocab_id,
                 due_at=due_at,
+                last_reviewed_at=last_reviewed_at,
                 ease_factor=ease_factor,
                 interval_days=interval_days,
                 repetitions=repetitions,
@@ -218,6 +220,35 @@ def test_build_daily_batch_isolated_per_user(tmp_path: Path) -> None:
     assert batch_a.cards[0].token == "token_a"
     assert len(batch_b.cards) == 1
     assert batch_b.cards[0].token == "token_b"
+
+
+def test_build_daily_batch_excludes_cards_reviewed_today(tmp_path: Path) -> None:
+    """Daily boundary: a card already reviewed today drops out of today's set,
+    even though it is otherwise due — so the session ends instead of re-serving it.
+    """
+    from app.schemas.batch import DailyBatch
+    from app.services.daily_batch import build_daily_batch
+
+    factory = _make_factory(str(tmp_path / "db.sqlite"))
+    user = asyncio.run(_insert_user(factory))
+    past = datetime(2020, 1, 1, tzinfo=UTC)
+    now = datetime.now(UTC)
+
+    async def go() -> None:
+        vid_pending = await _insert_vocab(factory, "pending")
+        vid_done = await _insert_vocab(factory, "done_today")
+        await _insert_review(factory, user.id, vid_pending, due_at=past)
+        await _insert_review(factory, user.id, vid_done, due_at=past, last_reviewed_at=now)
+
+    asyncio.run(go())
+
+    async def query() -> DailyBatch:
+        async with factory() as s:
+            return await build_daily_batch(s, user)
+
+    batch = asyncio.run(query())
+    assert len(batch.cards) == 1
+    assert batch.cards[0].token == "pending"
 
 
 def test_build_daily_batch_returns_empty_for_no_due_cards(tmp_path: Path) -> None:
