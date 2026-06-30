@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: SecretStr = SecretStr("")
     google_redirect_uri: str
+    google_extension_client_id: str = ""
     session_https_only: bool = False
     voice_agent_provider: str = ""
     voice_agent_api_key: SecretStr = SecretStr("")

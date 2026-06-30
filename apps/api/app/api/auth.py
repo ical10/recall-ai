@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import base64
-import json
+import asyncio
 import secrets
 from datetime import UTC, datetime
 
@@ -16,6 +15,7 @@ from app.core.config import get_settings
 from app.models.review import Review
 from app.models.user import User
 from app.models.vocab_item import VocabItem
+from app.services.google_identity import InvalidGoogleToken, verify_google_id_token
 
 router = APIRouter()
 
@@ -154,18 +154,19 @@ async def callback(
         raise HTTPException(status_code=400, detail="missing authorization code")
 
     token_data = await _exchange_code(code)
-    id_token = token_data.get("id_token")
-    if not id_token or not isinstance(id_token, str):
+    id_token_raw = token_data.get("id_token")
+    if not id_token_raw or not isinstance(id_token_raw, str):
         raise HTTPException(status_code=400, detail="no id_token in response")
 
-    payload_b64 = id_token.split(".")[1]
-    payload_b64 += "=" * (4 - len(payload_b64) % 4)
-    payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+    try:
+        identity = await asyncio.to_thread(verify_google_id_token, id_token_raw)
+    except InvalidGoogleToken as exc:
+        raise HTTPException(status_code=400, detail="invalid id_token") from exc
 
-    google_id = payload["sub"]
-    email = payload.get("email", "")
-    name = payload.get("name", "")
-    avatar_url = payload.get("picture")
+    google_id = identity.sub
+    email = identity.email
+    name = identity.name
+    avatar_url = identity.picture
 
     user = (
         await session.execute(select(User).where(User.google_id == google_id))
