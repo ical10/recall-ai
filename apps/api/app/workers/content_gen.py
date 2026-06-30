@@ -18,6 +18,7 @@ from app.schemas.llm import SimpleVocabExample
 from app.services.enrichment import enrich_vocab_item
 from app.services.llm import LLMClient, LLMValidationFailure
 from app.services.selection import select_unenriched
+from app.services.tts import synthesize
 from app.services.vocab_generation import generate_vocab_batch
 
 logger = logging.getLogger(__name__)
@@ -307,3 +308,84 @@ async def _persist_batch_and_enroll(
                 session.add(Review(user_id=uid, vocab_item_id=vocab.id, due_at=now))
                 reviews_created += 1
     return vocab_created, reviews_created
+
+
+@celery_app.task(name="content_gen.render_audio")  # type: ignore[untyped-decorator]
+def render_audio(vocab_item_id: str) -> dict[str, str]:
+    return asyncio.run(_render_audio(vocab_item_id))
+
+
+async def _render_audio(vocab_item_id: str) -> dict[str, str]:
+    vid = UUID(vocab_item_id)
+    async with SessionLocal() as session:
+        vocab = await session.get(VocabItem, vid)
+        if vocab is None:
+            return {"status": "not_found"}
+
+        if vocab.word_audio_url and vocab.example_audio_url:
+            return {"status": "already_rendered"}
+
+        word_url = synthesize(vocab.token) if not vocab.word_audio_url else ""
+        example_url = (
+            synthesize(vocab.example_sentence or "") if not vocab.example_audio_url else ""
+        )
+
+        if word_url:
+            vocab.word_audio_url = word_url
+        if example_url:
+            vocab.example_audio_url = example_url
+        await session.commit()
+
+    return {
+        "status": "rendered",
+        "word_audio_url": word_url or "",
+        "example_audio_url": example_url or "",
+    }
+
+
+@celery_app.task(name="content_gen.backfill_audio")  # type: ignore[untyped-decorator]
+def backfill_audio(batch_size: int = 100) -> dict[str, int]:
+    return asyncio.run(_backfill_audio(batch_size))
+
+
+async def _backfill_audio(batch_size: int) -> dict[str, int]:
+    rendered = 0
+    skipped = 0
+    async with SessionLocal() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(VocabItem.id)
+                    .where(
+                        VocabItem.definition != "",
+                        VocabItem.word_audio_url.is_(None),
+                    )
+                    .limit(batch_size)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        for vid in rows:
+            vocab = await session.get(VocabItem, vid)
+            if vocab is None:
+                continue
+
+            word_url = synthesize(vocab.token) if not vocab.word_audio_url else ""
+            example_url = (
+                synthesize(vocab.example_sentence or "") if not vocab.example_audio_url else ""
+            )
+
+            if word_url or example_url:
+                if word_url:
+                    vocab.word_audio_url = word_url
+                if example_url:
+                    vocab.example_audio_url = example_url
+                rendered += 1
+            else:
+                skipped += 1
+
+        await session.commit()
+
+    return {"rendered": rendered, "skipped": skipped}

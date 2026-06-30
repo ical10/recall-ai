@@ -16,6 +16,8 @@ dependencies = [
     "alembic>=1.18.5",
     "itsdangerous>=2.0",
     "python-multipart>=0.0.32",
+    "boto3>=1.43.37",
+    "google-genai>=2.10.0",
 ]
 
 [dependency-groups]

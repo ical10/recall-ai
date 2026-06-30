@@ -17,6 +17,14 @@ class Settings(BaseSettings):
     google_client_secret: SecretStr = SecretStr("")
     google_redirect_uri: str
     session_https_only: bool = False
+    voice_agent_provider: str = ""
+    voice_agent_api_key: SecretStr = SecretStr("")
+    voice_agent_model: str = "en-US-Standard-H"
+    r2_access_key_id: str = ""
+    r2_secret_access_key: SecretStr = SecretStr("")
+    r2_bucket: str = ""
+    r2_endpoint: str = ""
+    r2_public_url: str = ""
 
 
 @lru_cache
