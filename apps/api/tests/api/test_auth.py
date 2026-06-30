@@ -20,10 +20,11 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.api.deps import UserDep, get_current_user
 from app.core.config import get_settings
 from app.core.db import get_session
+from app.core.tokens import verify_bearer_token
 from app.models import Base
 from app.models.review import Review
 from app.models.user import User
-from app.services.google_identity import GoogleIdentity
+from app.services.google_identity import GoogleIdentity, InvalidGoogleToken
 
 TEST_SECRET = "test-auth-secret"
 TEST_STATE = "known-state"
@@ -353,8 +354,8 @@ def test_callback_heals_empty_definitions_on_returning_user_with_reviews(
     _setup_env()
     app, factory = _make_app(str(tmp_path / "db.sqlite"))
 
-    from app.api.auth import STARTER_VOCAB
     from app.models.vocab_item import VocabItem
+    from app.services.account import STARTER_VOCAB
 
     async def preseed_user_with_bad_reviews() -> None:
         async with factory() as s:
@@ -403,8 +404,8 @@ def test_callback_heals_empty_definitions_on_existing_starter_vocab_items(
     _setup_env()
     app, factory = _make_app(str(tmp_path / "db.sqlite"))
 
-    from app.api.auth import STARTER_VOCAB
     from app.models.vocab_item import VocabItem
+    from app.services.account import STARTER_VOCAB
 
     async def preseed_empty_vocab_items() -> None:
         async with factory() as s:
@@ -490,3 +491,77 @@ def test_callback_backfills_starter_vocab_for_existing_user_with_no_reviews(
 
     count = asyncio.run(check())
     assert count == 12
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/extension
+# ---------------------------------------------------------------------------
+
+
+def test_extension_auth_issues_bearer_and_seeds_new_user(tmp_path: Path) -> None:
+    from app.services.account import STARTER_VOCAB
+
+    _setup_env()
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+    with TestClient(app) as c:
+        resp = c.post(
+            "/auth/extension",
+            json={"id_token": _fake_id_token("sub-ext", "kid@x.com", "Kid")},
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["user"]["email"] == "kid@x.com"
+
+    async def _load() -> tuple[str, int]:
+        async with factory() as s:
+            user = (await s.execute(select(User).where(User.google_id == "sub-ext"))).scalar_one()
+            reviews = (
+                (await s.execute(select(Review).where(Review.user_id == user.id))).scalars().all()
+            )
+            return str(user.id), len(reviews)
+
+    user_id, n_reviews = asyncio.run(_load())
+    assert str(verify_bearer_token(data["token"])) == user_id  # bearer maps to the user
+    assert n_reviews == len(STARTER_VOCAB)
+
+
+def test_extension_auth_rejects_invalid_token(tmp_path: Path) -> None:
+    _setup_env()
+    app, _ = _make_app(str(tmp_path / "db.sqlite"))
+    with (
+        patch("app.api.auth.verify_google_id_token", side_effect=InvalidGoogleToken("bad")),
+        TestClient(app) as c,
+    ):
+        resp = c.post("/auth/extension", json={"id_token": "x.y.z"})
+    assert resp.status_code == 401
+
+
+def test_extension_auth_existing_user_is_not_duplicated(tmp_path: Path) -> None:
+    _setup_env()
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+
+    async def _seed() -> str:
+        async with factory() as s:
+            u = User(email="old@x.com", google_id="sub-ext", name="Old")
+            s.add(u)
+            await s.commit()
+            await s.refresh(u)
+            return str(u.id)
+
+    existing_id = asyncio.run(_seed())
+    with TestClient(app) as c:
+        resp = c.post(
+            "/auth/extension",
+            json={"id_token": _fake_id_token("sub-ext", "new@x.com", "New")},
+        )
+    assert resp.status_code == 200
+    assert str(verify_bearer_token(resp.json()["token"])) == existing_id
+
+    async def _count() -> int:
+        async with factory() as s:
+            rows = (
+                (await s.execute(select(User).where(User.google_id == "sub-ext"))).scalars().all()
+            )
+            return len(rows)
+
+    assert asyncio.run(_count()) == 1
