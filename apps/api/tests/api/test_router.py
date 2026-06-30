@@ -8,7 +8,13 @@ def test_router_is_an_apirouter() -> None:
 
 
 def test_json_routes_are_registered() -> None:
-    paths = [route.path for route in router.routes]
+    # Introspect the built app's OpenAPI paths rather than router.routes: since
+    # FastAPI 0.138 included sub-routers appear as lazy `_IncludedRouter` wrappers
+    # (no `.path`, prefixes applied only on the mounted app), so the schema is the
+    # stable, version-proof source of registered paths.
+    from app.main import app
+
+    paths = set(app.openapi()["paths"])
     assert "/api/dashboard" in paths
     assert "/api/review/batch" in paths
     assert "/api/me" in paths
