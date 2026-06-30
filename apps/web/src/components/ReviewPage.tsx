@@ -9,6 +9,7 @@ import { Washi } from "@/components/ui/Washi";
 import { Chip } from "@/components/ui/Chip";
 import { DoneCard } from "@/components/DoneCard";
 import { useAudioQueue } from "@/components/useAudioQueue";
+import { PronunciationGate } from "@/components/PronunciationGate";
 
 interface DailyBatch {
   cards: Card[];
@@ -25,6 +26,7 @@ export function ReviewPage() {
 
   const { audioRef, play, stop } = useAudioQueue();
   const [playing, setPlaying] = useState(false);
+  const [pronunciationDone, setPronunciationDone] = useState(false);
 
   useEffect(() => {
     const a = audioRef.current;
@@ -177,7 +179,13 @@ export function ReviewPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-4 gap-3 w-full">
+          <PronunciationGate
+            vocabItemId={card.vocab_item_id}
+            onDone={() => setPronunciationDone(true)}
+          />
+
+          {pronunciationDone && (
+            <div className="grid grid-cols-4 gap-3 w-full">
             <RatingButton
               emoji="😢"
               label="Again"
@@ -207,6 +215,7 @@ export function ReviewPage() {
               onClick={() => handleRate(5)}
             />
           </div>
+          )}
         </Paper>
       )}
     </main>
