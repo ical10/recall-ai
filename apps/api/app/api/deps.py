@@ -1,19 +1,13 @@
-from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
 from app.models.user import User
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
-
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-TEMPLATES_DIR = BASE_DIR / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 async def get_current_user(request: Request, session: SessionDep) -> User:

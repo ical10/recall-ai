@@ -27,20 +27,5 @@ services:
       timeout: 3s
       retries: 5
 
-  web:
-    build: .
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-recallai}
-      REDIS_URL: redis://redis:6379/0
-    ports:
-      - "8000:8000"
-
 volumes:
   pgdata:

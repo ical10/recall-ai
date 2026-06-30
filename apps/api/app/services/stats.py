@@ -3,13 +3,14 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.review import Review
 from app.models.user import User
 from app.models.vocab_item import VocabItem
 from app.schemas.stats import RecentRating, UserStats
+from app.services.due import due_today_conditions
 
 
 async def _fetch_review_dates(
@@ -17,11 +18,6 @@ async def _fetch_review_dates(
     user: User,
     user_tz: ZoneInfo,
 ) -> set[date]:
-    """Return the set of local dates on which the user has at least one review.
-
-    Uses func.timezone (Postgres) when available; falls back to Python-side
-    timezone conversion for SQLite (tests).
-    """
     engine = session.get_bind()
     dialect = engine.dialect.name if engine is not None else "postgresql"
 
@@ -38,8 +34,6 @@ async def _fetch_review_dates(
             .scalars()
             .all()
         )
-        # aiosqlite strips tzinfo; astimezone on a naive datetime treats it as local
-        # system time instead of UTC, so we must explicitly mark it as UTC first.
         return {
             ts.replace(tzinfo=UTC).astimezone(user_tz).date()
             for ts in raw_timestamps
@@ -71,8 +65,6 @@ async def compute_user_stats(
 ) -> UserStats:
     user_tz = ZoneInfo(user.timezone)
     today = today or datetime.now(user_tz).date()
-    start_of_today_local = datetime.combine(today, datetime.min.time(), tzinfo=user_tz)
-    end_of_today_local = start_of_today_local + timedelta(days=1)
 
     due_today = (
         await session.execute(
@@ -80,9 +72,7 @@ async def compute_user_stats(
             .join(VocabItem, Review.vocab_item_id == VocabItem.id)
             .where(
                 Review.user_id == user.id,
-                Review.suspended.is_(False),
-                Review.due_at < end_of_today_local,
-                VocabItem.definition != "",
+                and_(*due_today_conditions(user.timezone, today=today)),
             )
         )
     ).scalar_one()
@@ -128,10 +118,6 @@ async def compute_user_stats(
 
 
 def _compute_streak(dates_with_reviews: set[date], today: date) -> int:
-    """Walk back from today counting consecutive review days.
-
-    Allows a 1-day grace when today has no review yet.
-    """
     if not dates_with_reviews:
         return 0
     cursor = today if today in dates_with_reviews else today - timedelta(days=1)

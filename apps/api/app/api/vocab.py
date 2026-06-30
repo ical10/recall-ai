@@ -3,11 +3,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import delete, func, select
-from sqlalchemy.engine import CursorResult
 
-from app.api.deps import SessionDep, UserDep, templates
+from app.api.deps import SessionDep, UserDep
 from app.models.review import Review
 from app.models.vocab_item import VocabItem
 from app.schemas.vocab import VocabCreate, VocabListResponse, VocabRead
@@ -43,14 +42,12 @@ async def list_vocab(
     )
 
 
-@router.post("/vocab", status_code=201, response_model=None)
+@router.post("/vocab", status_code=201, response_model=VocabRead)
 async def create_vocab(
-    request: Request,
     session: SessionDep,
     user: UserDep,
     body: VocabCreate,
-    response: Response,
-) -> VocabRead | Response:
+) -> VocabRead:
     existing = (
         await session.execute(
             select(VocabItem).where(
@@ -59,16 +56,8 @@ async def create_vocab(
             )
         )
     ).scalar_one_or_none()
-    is_htmx = request.headers.get("hx-request")
     if existing is not None:
         item = existing
-        response.status_code = 200
-        if is_htmx:
-            return templates.TemplateResponse(
-                request,
-                "partials/vocab-exists.html",
-                {"token": item.token},
-            )
     else:
         item = VocabItem(token=body.token, language=body.language, definition="")
         session.add(item)
@@ -91,18 +80,7 @@ async def create_vocab(
         )
     await session.commit()
     await session.refresh(item)
-    if is_htmx:
-        return templates.TemplateResponse(
-            request,
-            "partials/vocab-added.html",
-            {"token": item.token},
-        )
     return VocabRead.model_validate(item)
-
-
-@router.get("/vocab/form")
-async def vocab_form(request: Request) -> Response:
-    return templates.TemplateResponse(request, "partials/vocab-form.html")
 
 
 @router.patch("/vocab/{vocab_id}/suspend")
@@ -132,15 +110,20 @@ async def delete_review(
     user: UserDep,
     vocab_id: UUID,
 ) -> None:
-    """Remove the caller's Review for this Vocab Item (remove it from their deck).
-    The shared Vocab Item stays — other users keep their own Reviews on it.
-    See ADR-0008 for why there is no DELETE /vocab/{id}."""
-    result: CursorResult[tuple[()]] = await session.execute(  # type: ignore[assignment]
+    exists = (
+        await session.execute(
+            select(Review.id).where(
+                Review.user_id == user.id,
+                Review.vocab_item_id == vocab_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if exists is None:
+        raise HTTPException(status_code=404)
+    await session.execute(
         delete(Review).where(
             Review.user_id == user.id,
             Review.vocab_item_id == vocab_id,
         )
     )
-    if result.rowcount == 0:
-        raise HTTPException(status_code=404)
     await session.commit()
