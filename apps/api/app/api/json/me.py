@@ -1,23 +1,9 @@
-from typing import Annotated
-from uuid import UUID
+from fastapi import APIRouter
 
-from fastapi import APIRouter, Depends, Request
-
-from app.api.deps import SessionDep
-from app.models.user import User
+from app.api.deps import OptionalUserDep
 from app.schemas.me import MeResponse
 
 router = APIRouter()
-
-
-async def _optional_user(request: Request, session: SessionDep) -> User | None:
-    user_id = request.session.get("user_id")
-    if user_id is None:
-        return None
-    return await session.get(User, UUID(user_id))
-
-
-OptionalUserDep = Annotated[User | None, Depends(_optional_user)]
 
 
 @router.get("/me")

@@ -66,7 +66,7 @@ async def _insert_user(
 
 
 def test_me_returns_user_profile(tmp_path: Path) -> None:
-    from app.api.json.me import _optional_user
+    from app.api.deps import get_optional_user as _optional_user
 
     app, factory = _make_app(str(tmp_path / "db.sqlite"))
     user = asyncio.run(_insert_user(factory, name="Alice", avatar_url="https://img.com/a.jpg"))
@@ -82,7 +82,7 @@ def test_me_returns_user_profile(tmp_path: Path) -> None:
 
 
 def test_me_handles_null_avatar(tmp_path: Path) -> None:
-    from app.api.json.me import _optional_user
+    from app.api.deps import get_optional_user as _optional_user
 
     app, factory = _make_app(str(tmp_path / "db.sqlite"))
     user = asyncio.run(_insert_user(factory, avatar_url=None))
@@ -95,7 +95,7 @@ def test_me_handles_null_avatar(tmp_path: Path) -> None:
 
 
 def test_me_returns_none_when_unauthenticated(tmp_path: Path) -> None:
-    from app.api.json.me import _optional_user
+    from app.api.deps import get_optional_user as _optional_user
 
     app, factory = _make_app(str(tmp_path / "db.sqlite"))
     asyncio.run(_insert_user(factory))
