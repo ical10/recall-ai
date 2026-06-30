@@ -69,7 +69,8 @@ def test_vocab_item_model_table_and_columns() -> None:
         "part_of_speech",
         "definition",
         "example_sentence",
-        "audio_url",
+        "word_audio_url",
+        "example_audio_url",
         "enrichment_attempts",
         "last_enrichment_attempted_at",
         "source",
@@ -79,7 +80,8 @@ def test_vocab_item_model_table_and_columns() -> None:
     assert cols["token"].nullable is False
     assert cols["language"].nullable is False
     assert cols["definition"].nullable is False
-    assert cols["audio_url"].nullable is True
+    assert cols["word_audio_url"].nullable is True
+    assert cols["example_audio_url"].nullable is True
     assert cols["enrichment_attempts"].nullable is False
     assert cols["last_enrichment_attempted_at"].nullable is True
     assert cols["source"].nullable is False
