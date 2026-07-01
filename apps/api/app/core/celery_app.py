@@ -17,6 +17,11 @@ celery_app.conf.update(
     accept_content=["json"],
     timezone="UTC",
     enable_utc=True,
+    # Worker RAM controls (Railway cost): one prefork child, recycled to release
+    # accumulated/peak memory, holding minimal prefetched work.
+    worker_prefetch_multiplier=1,
+    worker_max_tasks_per_child=50,
+    worker_max_memory_per_child=400_000,  # KB (~390 MB): recycle a bloated child
     imports=("app.workers.content_gen",),
     beat_schedule={
         "content-gen-daily": {
