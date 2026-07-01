@@ -41,16 +41,22 @@ class SpeechifyEngine(TTSEngine):
         settings = get_settings()
         api_key = settings.voice_agent_api_key.get_secret_value()
         resp = requests.post(
-            "https://api.sws.speechify.com/v1/audio/speech",
+            "https://api.speechify.ai/v1/audio/speech",
             headers={"Authorization": f"Bearer {api_key}"},
-            json={"input": text, "voice_id": voice, "audio_format": "mp3"},
+            json={
+                "input": text,
+                "voice_id": voice,
+                "audio_format": "mp3",
+            },
             timeout=RENDER_TIMEOUT_S,
         )
-        resp.raise_for_status()
+        if not resp.ok:
+            raise RuntimeError(f"Speechify {resp.status_code}: {resp.text[:300]}")
         data = resp.json()
         audio_url = data["audio_data"]
         audio_resp = requests.get(audio_url, timeout=RENDER_TIMEOUT_S)
-        audio_resp.raise_for_status()
+        if not audio_resp.ok:
+            raise RuntimeError(f"Speechify audio download {audio_resp.status_code}")
         return audio_resp.content
 
 
