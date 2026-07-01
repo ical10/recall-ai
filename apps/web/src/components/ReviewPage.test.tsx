@@ -5,12 +5,17 @@ import { useReviewSession, type Card } from "@/store/reviewSession";
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: vi.fn(),
-  useMutation: vi.fn(),
-  useQueryClient: vi.fn(() => ({ invalidateQueries: vi.fn() })),
 }));
 
-vi.mock("@/api/client", () => ({
-  fetchApi: vi.fn(() => Promise.resolve({})),
+vi.mock("@/hooks/useVoiceRecorder", () => ({
+  useVoiceRecorder: () => ({
+    state: "idle",
+    blob: null,
+    supported: false,
+    start: vi.fn(),
+    stop: vi.fn(),
+    reset: vi.fn(),
+  }),
 }));
 
 Object.defineProperty(globalThis, "crypto", {
@@ -48,7 +53,6 @@ describe("ReviewPage", () => {
       isLoading: true,
       error: null,
     } as never);
-
     render(<ReviewPage />);
     expect(screen.queryByText("serendipity")).not.toBeInTheDocument();
   });
@@ -59,7 +63,6 @@ describe("ReviewPage", () => {
       isLoading: false,
       error: null,
     } as never);
-
     render(<ReviewPage />);
     expect(screen.getByText("serendipity")).toBeInTheDocument();
     expect(screen.getByText(/Show Answer/)).toBeInTheDocument();
@@ -71,10 +74,9 @@ describe("ReviewPage", () => {
       isLoading: false,
       error: null,
     } as never);
-
     render(<ReviewPage />);
     fireEvent.click(screen.getByText(/Show Answer/));
-
+    fireEvent.click(screen.getByText("Skip"));
     expect(screen.getByText("the occurrence of events by chance")).toBeInTheDocument();
     expect(screen.getByText(/Finding that book was pure serendipity/)).toBeInTheDocument();
     expect(screen.getByText("Good")).toBeInTheDocument();
@@ -90,12 +92,11 @@ describe("ReviewPage", () => {
       isLoading: false,
       error: null,
     } as never);
-
     render(<ReviewPage />);
     expect(screen.getByText("first")).toBeInTheDocument();
     fireEvent.click(screen.getByText(/Show Answer/));
+    fireEvent.click(screen.getByText("Skip"));
     fireEvent.click(screen.getByText("Good"));
-
     expect(screen.getByText("second")).toBeInTheDocument();
     expect(screen.queryByText(/Show Answer/)).toBeInTheDocument();
   });
@@ -106,11 +107,10 @@ describe("ReviewPage", () => {
       isLoading: false,
       error: null,
     } as never);
-
     render(<ReviewPage />);
     fireEvent.click(screen.getByText(/Show Answer/));
+    fireEvent.click(screen.getByText("Skip"));
     fireEvent.click(screen.getByText("Good"));
-
     expect(screen.getByText(/All caught up/)).toBeInTheDocument();
     expect(screen.getByText(/Back to deck/)).toBeInTheDocument();
   });
@@ -121,7 +121,6 @@ describe("ReviewPage", () => {
       isLoading: false,
       error: null,
     } as never);
-
     render(<ReviewPage />);
     expect(screen.getByText(/No cards due/)).toBeInTheDocument();
   });
@@ -132,10 +131,8 @@ describe("ReviewPage", () => {
       isLoading: false,
       error: null,
     } as never);
-
     render(<ReviewPage />);
     fireEvent.keyDown(window, { key: " " });
-
     expect(screen.getByText("the occurrence of events by chance")).toBeInTheDocument();
   });
 });
