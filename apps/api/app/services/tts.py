@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import logging
 import time
 from abc import ABC, abstractmethod
@@ -54,11 +55,7 @@ class SpeechifyEngine(TTSEngine):
         if not resp.ok:
             raise RuntimeError(f"Speechify {resp.status_code}: {resp.text[:300]}")
         data = resp.json()
-        audio_url = data["audio_data"]
-        audio_resp = requests.get(audio_url, timeout=RENDER_TIMEOUT_S)
-        if not audio_resp.ok:
-            raise RuntimeError(f"Speechify audio download {audio_resp.status_code}")
-        return audio_resp.content
+        return base64.b64decode(data["audio_data"])
 
 
 _ENGINES: dict[str, TTSEngine] = {
@@ -130,7 +127,7 @@ def synthesize(text: str, *, voice: str | None = None) -> str:
             )
             if attempt == MAX_RETRIES:
                 logger.error("tts_exhausted", extra={"chars": char_count})
-                return ""
+                raise
     return ""
 
 

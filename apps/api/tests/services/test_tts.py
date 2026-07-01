@@ -1,5 +1,7 @@
 from unittest.mock import patch
 
+import pytest
+
 from app.models.vocab_item import VocabItem
 from app.services.tts import GeminiEngine, ensure_audio, synthesize
 
@@ -53,13 +55,13 @@ def test_synthesize_calls_engine_and_returns_url() -> None:
     mock_upload.assert_called_once()
 
 
-def test_synthesize_returns_empty_on_exhausted_retries() -> None:
+def test_synthesize_raises_on_exhausted_retries() -> None:
     with (
         patch("app.services.tts.get_settings") as mock_settings,
         patch.object(GeminiEngine, "synthesize", side_effect=RuntimeError("boom")),
         patch("app.services.tts._upload_to_r2") as mock_upload,
     ):
         mock_settings.return_value.voice_agent_provider = "gemini"
-        result = synthesize("hello")
-    assert result == ""
+        with pytest.raises(RuntimeError, match="boom"):
+            synthesize("hello")
     mock_upload.assert_not_called()
