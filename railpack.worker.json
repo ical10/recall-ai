@@ -5,6 +5,6 @@
     "python": "3.11"
   },
   "deploy": {
-    "startCommand": "uv run --project . celery -A app.core.celery_app:celery_app --workdir apps/api worker --loglevel=info --concurrency=4"
+    "startCommand": "uv run --project . celery -A app.core.celery_app:celery_app --workdir apps/api worker --loglevel=info --concurrency=1"
   }
 }
