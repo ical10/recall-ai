@@ -92,7 +92,7 @@ export function PronunciationGate({
   }
 
   return (
-    <div className="mt-4 space-y-3 text-center">
+    <div className="mt-4 mb-8 space-y-3 text-center">
       {error && (
         <div className="text-amber-600 text-sm mb-2">{error}</div>
       )}
