@@ -153,7 +153,7 @@ export function ReviewPage() {
           tilt="r"
           animate="flip-in"
           washi={<Washi color="teal" className="-top-3 -right-3 tilt-r" />}
-          className="min-h-[240px] flex flex-col items-center justify-center text-center"
+          className="min-h-[200px] sm:min-h-[240px] flex flex-col items-center justify-center text-center"
         >
           <div className="text-3xl font-display font-black text-ink mb-2 flex items-center gap-2">
             {card.token}
@@ -185,7 +185,7 @@ export function ReviewPage() {
           />
 
           {pronunciationDone && (
-            <div className="grid grid-cols-4 gap-3 w-full">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full">
             <RatingButton
               emoji="😢"
               label="Again"
