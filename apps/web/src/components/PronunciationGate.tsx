@@ -17,6 +17,7 @@ export function PronunciationGate({
   onDone: () => void;
 }) {
   const [checking, setChecking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [verdict, setVerdict] = useState<PronunciationVerdict | null>(null);
   const recorder = useVoiceRecorder();
 
@@ -50,8 +51,10 @@ export function PronunciationGate({
           onDone();
           return;
         }
+        setError("Hmm, couldn't check that — try again");
         return;
       }
+      setError(null);
       const data: PronunciationVerdict = await resp.json();
       setVerdict(data);
       if (data.said_target && data.confidence >= 0.6) {
@@ -74,6 +77,10 @@ export function PronunciationGate({
 
   return (
     <div className="mt-4 space-y-3 text-center">
+      {error && (
+        <div className="text-amber-600 text-sm mb-2">{error}</div>
+      )}
+
       {verdict && !verdict.said_target && (
         <div className="text-berry text-sm mb-2">🔁 {verdict.feedback}</div>
       )}
@@ -103,7 +110,7 @@ export function PronunciationGate({
           <Button variant="primary" onClick={handleSubmit}>
             📤 Check
           </Button>
-          <Button variant="ghost" onClick={() => { recorder.reset(); setVerdict(null); }}>
+          <Button variant="ghost" onClick={() => { recorder.reset(); setVerdict(null); setError(null); }}>
             🔁 Retry
           </Button>
           <Button variant="ghost" onClick={onDone}>

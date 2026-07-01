@@ -30,6 +30,7 @@ class PronunciationEngine(ABC):
 class GeminiPronunciationEngine(PronunciationEngine):
     def evaluate(self, audio: bytes, mime_type: str, *, target: str) -> str:
         from google.genai import Client
+        from google.genai.types import GenerateContentConfig
 
         settings = get_settings()
         client = Client(api_key=settings.stt_api_key.get_secret_value())
@@ -40,6 +41,7 @@ class GeminiPronunciationEngine(PronunciationEngine):
         response = client.models.generate_content(
             model=settings.stt_model,
             contents=[audio_part, prompt],
+            config=GenerateContentConfig(response_mime_type="application/json"),
         )
         return response.text or ""
 
@@ -73,7 +75,12 @@ def evaluate_pronunciation(
             elapsed = time.monotonic() - start
 
             try:
-                data = json.loads(raw)
+                cleaned = raw.strip()
+                if cleaned.startswith("```"):
+                    cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+                if cleaned.endswith("```"):
+                    cleaned = cleaned[: cleaned.rfind("```")].strip()
+                data = json.loads(cleaned)
             except json.JSONDecodeError:
                 last_error = ValueError("invalid JSON from engine")
                 continue
