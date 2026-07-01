@@ -45,8 +45,9 @@ class SpeechifyEngine(TTSEngine):
             headers={"Authorization": f"Bearer {api_key}"},
             json={
                 "input": text,
-                "voice_id": voice,
+                "voice_id": "george",
                 "audio_format": "mp3",
+                "model": voice,
             },
             timeout=RENDER_TIMEOUT_S,
         )
