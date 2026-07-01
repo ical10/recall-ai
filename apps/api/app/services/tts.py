@@ -5,8 +5,6 @@ import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 
-import boto3  # type: ignore[import-untyped]
-
 from app.core.config import get_settings
 from app.models.vocab_item import VocabItem
 
@@ -66,6 +64,9 @@ def _upload_to_r2(key: str, data: bytes, content_type: str = "audio/mpeg") -> st
     settings = get_settings()
     if not settings.r2_endpoint:
         return ""
+    # lazy import: keep the boto3 SDK out of every worker/beat process's baseline RSS
+    import boto3  # type: ignore[import-untyped]
+
     s3 = boto3.client(
         "s3",
         endpoint_url=settings.r2_endpoint,
