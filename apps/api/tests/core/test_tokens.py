@@ -17,7 +17,7 @@ def test_garbage_token_returns_none() -> None:
 
 def test_tampered_token_returns_none() -> None:
     token = sign_bearer_token(uuid4())
-    tampered = token[:-1] + ("a" if token[-1] != "a" else "b")
+    tampered = ("a" if token[0] != "a" else "b") + token[1:]
     assert verify_bearer_token(tampered) is None
 
 
