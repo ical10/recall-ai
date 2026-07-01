@@ -21,6 +21,11 @@ export function PronunciationGate({
   const [verdict, setVerdict] = useState<PronunciationVerdict | null>(null);
   const recorder = useVoiceRecorder();
 
+  useEffect(() => {
+    setVerdict(null);
+    setError(null);
+  }, [vocabItemId]);
+
   if (!recorder.supported) {
     return (
       <div className="text-center mt-4">
@@ -61,7 +66,7 @@ export function PronunciationGate({
         setTimeout(onDone, 1500);
       }
     } catch {
-      // fail-open: allow skip
+      setError("Hmm, couldn't check that — try again");
     } finally {
       setChecking(false);
     }
