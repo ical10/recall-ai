@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchApi } from "@/api/client";
 import { useReviewSession, type Card } from "@/store/reviewSession";
@@ -9,6 +9,7 @@ import { Washi } from "@/components/ui/Washi";
 import { Chip } from "@/components/ui/Chip";
 import { DoneCard } from "@/components/DoneCard";
 import { useAudioQueue } from "@/components/useAudioQueue";
+import { PronunciationGate } from "@/components/PronunciationGate";
 
 interface DailyBatch {
   cards: Card[];
@@ -23,7 +24,22 @@ export function ReviewPage() {
   const { phase, cards, activeIndex, completed, loadCards, reveal, nextCard } =
     useReviewSession();
 
-  const { audioRef, play } = useAudioQueue();
+  const { audioRef, play, stop } = useAudioQueue();
+  const [playing, setPlaying] = useState(false);
+  const [pronunciationDone, setPronunciationDone] = useState(false);
+
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    const onPlay = () => setPlaying(true);
+    const onEnded = () => setPlaying(false);
+    a.addEventListener("play", onPlay);
+    a.addEventListener("ended", onEnded);
+    return () => {
+      a.removeEventListener("play", onPlay);
+      a.removeEventListener("ended", onEnded);
+    };
+  }, []);
 
   useEffect(() => {
     if (data?.cards) {
@@ -139,8 +155,20 @@ export function ReviewPage() {
           washi={<Washi color="teal" className="-top-3 -right-3 tilt-r" />}
           className="min-h-[240px] flex flex-col items-center justify-center text-center"
         >
-          <div className="text-3xl font-display font-black text-ink mb-2">
+          <div className="text-3xl font-display font-black text-ink mb-2 flex items-center gap-2">
             {card.token}
+            {(card.word_audio_url || card.example_audio_url) && (
+              <button
+                onClick={() => {
+                  if (playing) stop();
+                  else play([card.word_audio_url || "", card.example_audio_url || ""]);
+                }}
+                className="text-sm px-2 py-1 rounded-lg border-2 border-ink hover:bg-cream-100"
+                title={playing ? "Stop" : "Replay"}
+              >
+                {playing ? "⏹" : "🔊"}
+              </button>
+            )}
           </div>
           <p className="text-lg text-ink-soft mb-4">{card.definition}</p>
           {card.example_sentence && (
@@ -151,7 +179,13 @@ export function ReviewPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-4 gap-3 w-full">
+          <PronunciationGate
+            vocabItemId={card.vocab_item_id}
+            onDone={() => setPronunciationDone(true)}
+          />
+
+          {pronunciationDone && (
+            <div className="grid grid-cols-4 gap-3 w-full">
             <RatingButton
               emoji="😢"
               label="Again"
@@ -181,6 +215,7 @@ export function ReviewPage() {
               onClick={() => handleRate(5)}
             />
           </div>
+          )}
         </Paper>
       )}
     </main>

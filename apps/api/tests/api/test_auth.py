@@ -181,8 +181,8 @@ def test_callback_handles_user_lifecycle(tmp_path: Path) -> None:
 
     user = asyncio.run(check())
     assert user is not None
-    assert user.email == "new@b.com"
-    assert user.name == "New"
+    assert user.email == "old@b.com"
+    assert user.name == "Old"
 
 
 def test_callback_rejects_state_mismatch(tmp_path: Path) -> None:

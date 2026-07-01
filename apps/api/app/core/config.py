@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     voice_agent_provider: str = ""
     voice_agent_api_key: SecretStr = SecretStr("")
     voice_agent_model: str = "en-US-Standard-H"
+    stt_provider: str = ""
+    stt_api_key: SecretStr = SecretStr("")
+    stt_model: str = ""
     r2_access_key_id: str = ""
     r2_secret_access_key: SecretStr = SecretStr("")
     r2_bucket: str = ""

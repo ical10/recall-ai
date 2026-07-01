@@ -99,9 +99,7 @@ async def provision_user(session: AsyncSession, identity: GoogleIdentity) -> Use
 
     is_new = False
     if user is not None:
-        user.email = identity.email
-        user.name = identity.name
-        user.avatar_url = identity.picture
+        pass  # profile is a first-login snapshot — never overwrite
     else:
         user = User(
             email=identity.email,
