@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { Button } from "@/components/ui/Button";
 
@@ -67,6 +67,17 @@ export function PronunciationGate({
     }
   };
 
+  useEffect(() => {
+    if (
+      recorder.state === "ready" &&
+      recorder.blob &&
+      !checking &&
+      !verdict
+    ) {
+      handleSubmit();
+    }
+  }, [recorder.state, recorder.blob]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (verdict && verdict.said_target && verdict.confidence >= 0.6) {
     return (
       <div className="text-center mt-4 text-teal text-sm font-medium">
@@ -107,9 +118,6 @@ export function PronunciationGate({
 
       {recorder.state === "ready" && !checking && (
         <div className="flex items-center justify-center gap-3">
-          <Button variant="primary" onClick={handleSubmit}>
-            📤 Check
-          </Button>
           <Button variant="ghost" onClick={() => { recorder.reset(); setVerdict(null); setError(null); }}>
             🔁 Retry
           </Button>
