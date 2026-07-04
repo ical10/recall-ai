@@ -27,13 +27,13 @@ Generic deck apps nail the timing but leave curation to the learner. Most kids (
 │ (browser)│                                        │  (external)  │
 └────┬─────┘                                        └──────▲───────┘
      │ HTTPS                                               │
-     │ OAuth + review UI                                   │ POST /chat
+     │ OAuth + React SPA                                   │ POST /chat
      ▼                                                     │ completions
 ┌─────────────────┐   ┌──────────────────┐   ┌─────────────┴──────┐
 │   Web service   │   │   Beat service   │   │   Worker service   │
 │  (recall-ai)    │   │     replicas=1   │   │                    │
 │  FastAPI+uvicorn│   │  Celery scheduler│   │   Celery worker    │
-│  Tailwind+htmx  │   │ 18:00 + 19:00 UTC│   │  consumes tasks    │
+│  serves React   │   │ 18:00 + 19:00 UTC│   │  consumes tasks    │
 └────┬────────────┘   └────────┬─────────┘   └─────┬─────────▲────┘
      │                         │ enqueues          │ persists│ pulls
      │ session +               │ scheduled tasks   │ vocab + │ tasks
@@ -59,7 +59,7 @@ Generic deck apps nail the timing but leave curation to the learner. Most kids (
 
 | Service    | Process              | Responsibility                                          | Talks to                 |
 | ---------- | -------------------- | ------------------------------------------------------- | ------------------------ |
-| **web**    | `uvicorn` (async)    | OAuth, review UI, dashboard, settings, HTMX partials    | Postgres                 |
+| **web**    | `uvicorn` (async)    | OAuth, JSON API, serves the React SPA build            | Postgres                 |
 | **beat**   | Celery beat (cron)   | Enqueues nightly content-generation tasks (UTC 18 & 19) | Redis                    |
 | **worker** | Celery worker (sync) | Pulls tasks, calls LLM, validates, persists vocab       | Redis, Postgres, LLM API |
 
@@ -122,7 +122,7 @@ Every LLM call is wrapped in:
 | ------------- | -------------------------------------------------- | ----------------------------------------------------------- |
 | Language      | Python 3.11                                        | Mature async, modern typing                                 |
 | Web framework | FastAPI                                            | Async-native, Pydantic-integrated                           |
-| Frontend      | Jinja2 + HTMX + Tailwind                           | Server-rendered, no SPA complexity for a server-driven UI   |
+| Frontend      | React 19 SPA (Vite, TanStack Router + Query, Zustand, Tailwind v4) | Richer client interactions (audio, pronunciation checks) than round-trip HTML could cleanly support |
 | ORM           | SQLAlchemy 2.0 (async) with typed `Mapped[]`       | Write-time typing catches model bugs                        |
 | Validation    | Pydantic v2 (strict)                               | The LLM-output safety boundary                              |
 | Database      | Postgres 16                                        | Standard; Railway addon in prod, Docker in dev              |
@@ -133,7 +133,8 @@ Every LLM call is wrapped in:
 | Spacing       | SM-2                                               | Simple, well-understood, sufficient for the data scale      |
 | Migrations    | Alembic                                            | One migration per logical change, never edited post-deploy  |
 | Lint / types  | Ruff + mypy strict                                 | Both must pass before commit                                |
-| Tests         | pytest                                             | Happy-path + validation-failure per Pydantic schema         |
+| Tests         | pytest (backend), Vitest + Testing Library (frontend) | Happy-path + validation-failure per Pydantic schema; component/route tests for the SPA |
+| Frontend types | openapi-typescript, generated from FastAPI's `/openapi.json` | Frontend types stay in sync with Pydantic schemas without hand-maintained duplicates |
 | Monorepo      | pnpm workspaces + Turborepo                        | One repo, three Railway services                            |
 | Hosting       | Railway (web + worker + beat + Postgres + Redis)   | One project, per-service `railway.*.json` configs           |
 
@@ -166,10 +167,12 @@ uv sync --frozen
 ## Running
 
 ```bash
-pnpm dev      # web server → http://127.0.0.1:8000
+pnpm dev      # FastAPI api (:8000) + Vite dev server for the React SPA (:5173, proxies /api and /auth)
 pnpm worker   # Celery worker (LLM content generation)
 pnpm beat     # Celery beat (daily scheduling)
 ```
+
+Open http://localhost:5173 in dev — Vite serves the SPA there and proxies API calls to :8000.
 
 ## Run the full stack in Docker
 
@@ -180,7 +183,7 @@ cp .env.example .env   # set GOOGLE_CLIENT_*, LLM_*, SECRET_KEY
 docker compose up --build
 ```
 
-`pnpm dev` is still the recommended dev loop — it gives you Tailwind + uvicorn hot reload. The Docker target is for verifying the production-shaped image locally.
+`pnpm dev` is still the recommended dev loop — it gives you Vite + uvicorn hot reload. The Docker target is for verifying the production-shaped image locally.
 
 ## Reset database
 
@@ -208,16 +211,22 @@ docker compose down -v   # stop, wipe data
 ```
 apps/api/
   app/
-    api/         route handlers (async)
+    api/         route handlers (async, JSON-only — no server-rendered views)
     core/        config, db engine, celery app, logging
     models/      SQLAlchemy 2.0 ORM (users, vocab_items, reviews)
     schemas/     Pydantic v2 (request, response, LLM-output contracts)
     services/    business logic (sm2, selection, enrichment, llm, stats)
     workers/     Celery tasks (sync only — Celery 5 constraint)
-  templates/     Jinja2 (pages/ + partials/)
-  static/        Tailwind output + minimal JS
   alembic/       migrations
   tests/         mirrors app/ structure
+apps/web/
+  src/
+    routes/      TanStack Router file-based routes
+    components/  page + shared UI components
+    api/         generated OpenAPI client + types
+    store/       Zustand stores (review session state)
+  dist/          Vite build output, served by uvicorn in prod
+apps/extension/  browser extension — stub only on main (package.json + tsconfig, no source yet)
 packages/shared/ shared enums + constants
 .github/         CI (ruff + mypy + pytest + alembic round-trip + gitleaks)
 railway.*.json   per-service deploy config (web / worker / beat)
@@ -250,7 +259,7 @@ Worth being upfront about:
 - **The operator pays the LLM bill.** Every nightly batch is a real API call against whichever provider `LLM_BASE_URL` points at; whoever deploys the app eats that cost. The retry-with-refinement loop, capped `max_tokens`, and idempotency markers keep spend bounded, but a misconfigured prompt can still burn tokens before the cap kicks in.
 - **Provider compatibility is broad in theory, narrow in practice.** Any OpenAI-API-compatible endpoint should work, swapped via the three `LLM_*` env vars. In practice only **OpenRouter** (free + paid tiers) and **OpenCode Go** have been smoke-tested end-to-end. Other compatible providers (Groq, Together AI, direct OpenAI, self-hosted vLLM) should work but haven't been verified.
 - **SM-2, not FSRS.** Chosen for simplicity and explainability. Optimal review timing is sacrificed for predictability — fine for the data scale, not optimal for it.
-- **HTMX over SPA.** Means most interactions are full-page round trips (cheap, but visible on slow links). Acceptable for the review-card flow; would not scale to a complex multi-pane UI.
+- **React SPA, not server-rendered.** Chosen for richer client interactions (audio recording/playback, pronunciation checks, browser-extension code sharing) than round-trip HTML can cleanly express. Trades server-driven simplicity for a second toolchain (Vite, TypeScript, Vitest) to keep in sync with the API.
 
 ---
 
