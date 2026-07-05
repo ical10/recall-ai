@@ -172,6 +172,30 @@ pnpm worker   # Celery worker (LLM content generation)
 pnpm beat     # Celery beat (daily scheduling)
 ```
 
+## Railway preview environments
+
+This repo uses Railway's native PR environments for previews instead of a custom deploy workflow.
+
+One-time Railway setup:
+
+1. In Railway Project Settings -> Environments, enable `PR Environments`.
+2. Optionally enable `Focused PR Environments` to skip untouched services in PR previews.
+3. Make sure the base `web` service already has a Railway-provided domain. Railway only auto-provisions PR domains when the base service has one.
+4. In the `web` service GitHub settings, enable `Wait for CI` so Railway holds preview deploys until GitHub Actions passes.
+5. Keep production autodeploy on `main`. PR environments stay isolated and are deleted when the PR closes or merges.
+
+What the repo does:
+
+- CI now runs on `main` and on `feat/**`, `fix/**`, `docs/**`, and `rizal/**` branch pushes, which satisfies Railway's current `Wait for CI` requirement.
+- Pull requests still run the same checks before Railway deploys the preview.
+- Once a PR is opened, Railway creates the preview environment and surfaces the preview URL in the Railway/GitHub integration UI.
+
+Official docs:
+
+- https://docs.railway.com/environments
+- https://docs.railway.com/deployments/github-autodeploys
+- https://docs.railway.com/cli
+
 Open http://localhost:5173 in dev — Vite serves the SPA there and proxies API calls to :8000.
 
 ## Run the full stack in Docker
