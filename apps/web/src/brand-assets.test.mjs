@@ -32,7 +32,7 @@ describe("brand assets", () => {
 
     expect(indexHtml).toContain(`<title>${siteMeta.title}</title>`);
     expect(indexHtml).toContain(`content="${simpleDescription}"`);
-    expect(indexHtml).toContain('content="https://recallai.app/og.png"');
+    expect(indexHtml).toContain('content="/og.png"');
     expect(indexHtml).toContain('href="/icon.png"');
     expect(indexHtml).toContain('href="/site.webmanifest"');
 
