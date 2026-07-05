@@ -1,9 +1,27 @@
+import asyncio
+
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import task_postrun
 
 from app.core.config import get_settings
 
 _settings = get_settings()
+
+
+@task_postrun.connect  # type: ignore[untyped-decorator]
+def _dispose_db_engine_after_task(**_kwargs: object) -> None:
+    # Each task wraps its work in its own asyncio.run() (a fresh event loop),
+    # but the async engine's connection pool is a process-wide singleton whose
+    # asyncpg connections are bound to the loop that created them. Without this,
+    # a pooled connection from a prior task's now-closed loop gets reused by the
+    # next task's new loop and raises "attached to a different loop" /
+    # "another operation is in progress". Disposing after every task forces the
+    # next task to open fresh, loop-correct connections.
+    from app.core.db import engine
+
+    asyncio.run(engine.dispose())
+
 
 celery_app = Celery(
     "recall_ai",

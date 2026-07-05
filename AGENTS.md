@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 ## project
 - name: RecallAI
@@ -12,7 +12,7 @@
 ```
 /                             ← monorepo root (pnpm workspaces + turborepo)
   /apps/
-    /api/                     ← fastapi application (json api only, no server-rendered views)
+    /api/                     ← fastapi application
       /app/
         /api/                 ← route handlers (async def only)
         /core/                ← config, db engine, celery app, logging
@@ -23,14 +23,7 @@
       /alembic/               ← migrations (one per logical change)
       /tests/                 ← mirrors /app structure, named test_*.py
       /plans/                 ← pre-coding plan documents (required for 3+ file tasks)
-    /web/                     ← react 19 spa (vite, tanstack router + query, zustand, tailwind v4)
-      /src/
-        /routes/              ← tanstack router file-based routes
-        /components/          ← page components + shared ui
-        /api/                 ← generated openapi client + types (from FastAPI's openapi.json)
-        /store/               ← zustand stores (review session state)
-      /dist/                  ← vite build output, served by FastAPI as the SPA in prod
-    /extension/               ← browser extension — stub only on main (package.json + tsconfig, no src)
+    /web/                     ← react 19 spa (vite + tanstack router + tanstack query + zustand, tailwind css v4)
   /packages/
     /shared/                  ← shared constants, enums, api contract types (if needed)
 ```
@@ -51,31 +44,27 @@
 
 ### ci
 - workflow lives at `.github/workflows/ci.yml`. three parallel jobs: `Lint & Test` (ruff + mypy + pytest), `Migration Check` (alembic upgrade/downgrade/upgrade against a postgres:16-alpine service container), `Secret Scan (Gitleaks)`.
-- triggers on every push to `main`, `feat/**`, `fix/**`, `docs/**`, and `rizal/**`, plus every pull request. all jobs must be green before a PR can merge (once branch protection is applied — see `.github/BRANCH_PROTECTION.md`). the branch-push trigger is required for Railway `Wait for CI` on preview deploys.
+- triggers on every push to `main` and every pull request. all jobs must be green before a PR can merge (once branch protection is applied — see `.github/BRANCH_PROTECTION.md`).
 - you cannot skip checks. there is no bypass flag, and `enforce_admins: true` applies to repo owners too.
 - dependabot config is at `.github/dependabot.yml`. it opens weekly PRs for github-actions, npm, and uv dependencies. minor+patch updates are grouped per ecosystem to reduce noise; major bumps get individual PRs.
 - to re-trigger a stuck PR: `gh run rerun <run-id>` or push an empty commit: `git commit --allow-empty -m "chore: retrigger CI" && git push`.
 
 ### railway
 - one repo, three services. each service has its own railpack config (skips the Node + Tailwind build for worker/beat — faster deploys, smaller images) AND its own railway config (so only web runs `alembic upgrade head` pre-deploy). Pair the two config files per service via env vars — no dashboard start-command override needed.
-  - **web**: default `railway.json` + `railpack.json`. Railpack installs python + uv + nodejs + pnpm, runs `pnpm install --frozen-lockfile`, `uv sync`, then `pnpm run build` to build the React SPA into `apps/web/dist`. preDeployCommand runs `alembic upgrade head`. Start: uvicorn, which serves the api under `/api` + `/auth` and the built SPA (via `apps/web/dist`) for every other path. `/healthz` healthcheck.
+  - **web**: default `railway.json` + `railpack.json`. Railpack installs python + uv + nodejs + pnpm, runs `pnpm install --frozen-lockfile`, `uv sync`, then `pnpm run build` to build the React SPA into `apps/web/dist`. preDeployCommand runs `alembic upgrade head`. Start: uvicorn, which serves the api under `/api` + `/auth` and the built SPA for every other path. `/healthz` healthcheck.
   - **worker**: set `RAILWAY_CONFIG_FILE=railway.worker.json` AND `RAILPACK_CONFIG_FILE=railpack.worker.json`. Railpack installs python + uv only (no Node). No preDeployCommand. Start: celery worker.
   - **beat**: set `RAILWAY_CONFIG_FILE=railway.beat.json` AND `RAILPACK_CONFIG_FILE=railpack.beat.json`. Same as worker. **Replicas must = 1** — duplicate beat = duplicate task enqueueing = duplicate LLM cost. Start: celery beat.
 - required env vars (all services): `DATABASE_URL`, `REDIS_URL`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `SECRET_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`. optional web-only: `SESSION_HTTPS_ONLY` (default `false` for dev; set `true` in prod so the signed session cookie carries the `Secure` flag). **no code-side defaults for the LLM trio nor `GOOGLE_REDIRECT_URI`** — `.env` (dev) and railway env (prod) are the single source of truth, so a missing var fails loudly at startup instead of silently picking a dev model or a localhost callback in prod. swap providers by setting the three `LLM_*` vars together (e.g. dev → OpenRouter + `z-ai/glm-4.5-air:free`; prod → OpenRouter + `deepseek/deepseek-v4-flash` or OpenCode Go's `https://opencode.ai/zen/go/v1` + `deepseek-v4-flash`). railway's postgres + redis addons inject `DATABASE_URL` and `REDIS_URL` automatically when attached.
-- previews: use Railway `PR Environments`, not a custom GitHub deploy job. enable `PR Environments` in Project Settings -> Environments, make sure the base web service has a Railway-provided domain, and enable `Wait for CI` in the web service GitHub settings. Railway then creates and tears down preview URLs automatically per PR.
 - the SPA build (`apps/web/dist`) is gitignored; `/assets` is mounted from it and served with long-lived caching from Vite's hashed filenames.
 
 ## conventions
 - all api endpoints async; all celery tasks sync (celery 5 limitation — do not use async def in tasks)
 - pydantic v2 schemas for every request/response body and every llm output boundary
 - sqlalchemy 2.0 declarative style with Mapped[] type annotations on every column — no legacy style
-- routes return raw pydantic models for json endpoints; fastapi handles serialization — the api is json-only, no server-rendered html
-- frontend types are generated, not hand-written: `pnpm gen:types` runs `openapi-typescript` against the api's `/openapi.json` (itself derived from the pydantic schemas) into `apps/web/src/api/schema.d.ts` — re-run after changing any request/response schema
-- react components are function components in `apps/web/src/components/`; routes are file-based under `apps/web/src/routes/` (TanStack Router)
-- server state (api data) goes through TanStack Query; only review-session UI state (current card, reveal state) lives in the Zustand store under `apps/web/src/store/`
-- tailwind v4 via `@tailwindcss/postcss`, compiled by Vite — no CDN, no runtime class generation
+- fastapi is json-api only — no server-rendered html; routes return raw pydantic models, fastapi handles serialization
+- react spa (apps/web) is the frontend, calling the fastapi json api
 - ruff for lint + format, mypy strict on /app — both must pass before any commit
-- backend tests live in /apps/api/tests/ mirroring /app structure, named test_*.py (pytest); frontend tests live alongside components as *.test.tsx (Vitest + Testing Library)
+- tests live in /apps/api/tests/ mirroring /app structure, named test_*.py
 - commits follow conventional commits: feat:, fix:, chore:, refactor:, test:, docs:
 - one alembic migration per logical change — never edit a migration that has been applied to any environment
 - no comments by default — only add a comment if the code would be genuinely hard to understand without it
@@ -89,8 +78,7 @@
 - chose openai sdk + provider-neutral settings (2026-05-04, refined 2026-05-07; supersedes earlier may-2026 anthropic call): openrouter, opencode go, deepseek-direct, and openai are all OpenAI-API-compatible, so the openai python sdk works against any of them by changing only `LLM_BASE_URL` + `LLM_API_KEY` + `LLM_MODEL` env vars (no code change). all three are required env vars with no code defaults — env files own the per-environment choice. recommended pairings: dev = OpenRouter + `z-ai/glm-4.5-air:free` (smoke-tested 2026-05-07 first-try; the earlier `meta-llama/llama-3.3-70b-instruct:free` returns 402 from upstream). prod options: OpenRouter @ `deepseek/deepseek-v4-flash` (~$0.14 in / $0.28 out per Mtok, pay-per-token, smoke-tested 2026-05-07 first-try @ 66 in + 173 out tokens); or OpenCode Go @ `deepseek-v4-flash` (flat-rate via subscription, smoke-tested 2026-05-07 first-try @ 165 in + 153 out tokens) if call volume fits the user's existing quota. retry-with-prompt-refinement loop absorbs the lower instruction-following quality of free models.
 - chose sm-2 over fsrs for spaced repetition (may 2026): simpler to implement and explain, sufficient for poc; fsrs is a candidate upgrade if data volume justifies it
 - chose google oauth over password auth (may 2026): simpler for solo/small-user-base, no password storage risk
-- chose htmx + jinja2 over next.js (may 2026): spaced-repetition ui is server-driven (show card, reveal, rate, next) — no complex client state; keeps entire stack in python, eliminates context switching, ships faster; next.js is a candidate if a mobile-web hybrid is needed later
-- chose react 19 spa (vite + tanstack router/query + zustand) over htmx + jinja2 (2026-06, superseding the above ADR): interactions grew past what htmx round-trips could cleanly express (audio recording/playback, pronunciation checks, browser-extension code sharing); fastapi is now a json-only api, the SPA is a separate `apps/web` workspace built by vite and served as static files by uvicorn in prod; frontend types are generated from the api's openapi schema instead of hand-kept in sync
+- migrated from htmx + jinja2 to a react 19 spa: fastapi is now json-api only, apps/web (vite + tanstack router + tanstack query + zustand, tailwind css v4) owns the frontend
 
 ## current focus
 - daily content generation pipeline: celery beat → selection service → llm enrichment → pydantic validation → persist

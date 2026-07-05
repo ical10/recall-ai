@@ -1,6 +1,8 @@
+from unittest.mock import AsyncMock, patch
+
 from celery import Celery
 
-from app.core.celery_app import celery_app
+from app.core.celery_app import _dispose_db_engine_after_task, celery_app
 
 
 def test_celery_app_is_celery_instance():
@@ -32,3 +34,16 @@ def test_beat_schedule_registers_nightly_content_gen():
     assert entry["kwargs"] == {"batch_size": 25}
     sched = entry["schedule"]
     assert 19 in sched.hour and 0 in sched.minute
+
+
+def test_task_postrun_disposes_db_engine():
+    # Regression: the async engine's connection pool is a process-wide singleton
+    # whose asyncpg connections are bound to whatever event loop created them,
+    # but each task runs in its own asyncio.run() (a fresh loop). Without
+    # disposing after every task, the next task's loop reuses a connection
+    # bound to a dead loop and crashes ("attached to a different loop" /
+    # "another operation is in progress"). This must dispose unconditionally.
+    with patch("app.core.db.engine") as mock_engine:
+        mock_engine.dispose = AsyncMock()
+        _dispose_db_engine_after_task()
+        mock_engine.dispose.assert_called_once()
