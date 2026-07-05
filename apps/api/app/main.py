@@ -13,6 +13,13 @@ from app.core.db import engine
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 SPA_DIST = BASE_DIR.parent / "web" / "dist"
+SPA_ROOT_FILES = {
+    "icon.png",
+    "icon.svg",
+    "og.png",
+    "og.svg",
+    "site.webmanifest",
+}
 
 
 @asynccontextmanager
@@ -55,6 +62,10 @@ def create_app() -> FastAPI:
                 from fastapi import HTTPException
 
                 raise HTTPException(status_code=404)
+            if full_path in SPA_ROOT_FILES:
+                file_path = SPA_DIST / full_path
+                if file_path.exists():
+                    return FileResponse(str(file_path))
             index = SPA_DIST / "index.html"
             if index.exists():
                 return FileResponse(str(index))
