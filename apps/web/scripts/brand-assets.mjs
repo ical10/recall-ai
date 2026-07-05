@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 export const siteMeta = {
   name: "RecallAI",
   shortName: "RecallAI",
-  title: "RecallAI | Words that stick",
+  title: "RecallAI | Spaced Repetition Vocabulary for ESL Learners",
   description:
     "A spaced-repetition vocabulary trainer that generates fresh, kid-safe English practice and brings each word back right before you forget it.",
   url: "https://recallai.app",

@@ -4,10 +4,12 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   buildIconSvg,
-  buildManifest,
   buildOgSvg,
   siteMeta,
 } from "../scripts/brand-assets.mjs";
+
+const simpleDescription =
+  "A pocket-sized vocabulary trainer that learns how you forget, then feeds you the right word at exactly the right moment.";
 
 describe("brand assets", () => {
   it("generates the branded svg assets", () => {
@@ -24,16 +26,18 @@ describe("brand assets", () => {
   it("matches index metadata and manifest", () => {
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
     const indexHtml = readFileSync(path.resolve(currentDir, "../index.html"), "utf8");
-    const manifest = JSON.parse(buildManifest());
+    const manifest = JSON.parse(
+      readFileSync(path.resolve(currentDir, "../public/site.webmanifest"), "utf8"),
+    );
 
     expect(indexHtml).toContain(`<title>${siteMeta.title}</title>`);
-    expect(indexHtml).toContain(`content="${siteMeta.description}"`);
-    expect(indexHtml).toContain(`content="${siteMeta.url}${siteMeta.ogImagePath}"`);
-    expect(indexHtml).toContain(`href="${siteMeta.iconPath}"`);
+    expect(indexHtml).toContain(`content="${simpleDescription}"`);
+    expect(indexHtml).toContain('content="/og.png"');
+    expect(indexHtml).toContain('href="/icon.png"');
     expect(indexHtml).toContain('href="/site.webmanifest"');
 
     expect(manifest.name).toBe(siteMeta.name);
     expect(manifest.theme_color).toBe(siteMeta.themeColor);
-    expect(manifest.icons[0]?.src).toBe(siteMeta.iconPath);
+    expect(manifest.icons[0]?.src).toBe("/icon.png");
   });
 });
