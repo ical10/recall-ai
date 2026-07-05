@@ -1,0 +1,16 @@
+{
+  "name": "RecallAI",
+  "short_name": "RecallAI",
+  "description": "A spaced-repetition vocabulary trainer that generates fresh, kid-safe English practice and brings each word back right before you forget it.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFDF7",
+  "theme_color": "#FFF8E7",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

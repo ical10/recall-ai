@@ -51,7 +51,7 @@
 
 ### ci
 - workflow lives at `.github/workflows/ci.yml`. three parallel jobs: `Lint & Test` (ruff + mypy + pytest), `Migration Check` (alembic upgrade/downgrade/upgrade against a postgres:16-alpine service container), `Secret Scan (Gitleaks)`.
-- triggers on every push to `main` and every pull request. all jobs must be green before a PR can merge (once branch protection is applied — see `.github/BRANCH_PROTECTION.md`).
+- triggers on every push to `main`, `feat/**`, `fix/**`, `docs/**`, and `rizal/**`, plus every pull request. all jobs must be green before a PR can merge (once branch protection is applied — see `.github/BRANCH_PROTECTION.md`). the branch-push trigger is required for Railway `Wait for CI` on preview deploys.
 - you cannot skip checks. there is no bypass flag, and `enforce_admins: true` applies to repo owners too.
 - dependabot config is at `.github/dependabot.yml`. it opens weekly PRs for github-actions, npm, and uv dependencies. minor+patch updates are grouped per ecosystem to reduce noise; major bumps get individual PRs.
 - to re-trigger a stuck PR: `gh run rerun <run-id>` or push an empty commit: `git commit --allow-empty -m "chore: retrigger CI" && git push`.
@@ -62,6 +62,7 @@
   - **worker**: set `RAILWAY_CONFIG_FILE=railway.worker.json` AND `RAILPACK_CONFIG_FILE=railpack.worker.json`. Railpack installs python + uv only (no Node). No preDeployCommand. Start: celery worker.
   - **beat**: set `RAILWAY_CONFIG_FILE=railway.beat.json` AND `RAILPACK_CONFIG_FILE=railpack.beat.json`. Same as worker. **Replicas must = 1** — duplicate beat = duplicate task enqueueing = duplicate LLM cost. Start: celery beat.
 - required env vars (all services): `DATABASE_URL`, `REDIS_URL`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `SECRET_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`. optional web-only: `SESSION_HTTPS_ONLY` (default `false` for dev; set `true` in prod so the signed session cookie carries the `Secure` flag). **no code-side defaults for the LLM trio nor `GOOGLE_REDIRECT_URI`** — `.env` (dev) and railway env (prod) are the single source of truth, so a missing var fails loudly at startup instead of silently picking a dev model or a localhost callback in prod. swap providers by setting the three `LLM_*` vars together (e.g. dev → OpenRouter + `z-ai/glm-4.5-air:free`; prod → OpenRouter + `deepseek/deepseek-v4-flash` or OpenCode Go's `https://opencode.ai/zen/go/v1` + `deepseek-v4-flash`). railway's postgres + redis addons inject `DATABASE_URL` and `REDIS_URL` automatically when attached.
+- previews: use Railway `PR Environments`, not a custom GitHub deploy job. enable `PR Environments` in Project Settings -> Environments, make sure the base web service has a Railway-provided domain, and enable `Wait for CI` in the web service GitHub settings. Railway then creates and tears down preview URLs automatically per PR.
 - the SPA build (`apps/web/dist`) is gitignored; `/assets` is mounted from it and served with long-lived caching from Vite's hashed filenames.
 
 ## conventions
