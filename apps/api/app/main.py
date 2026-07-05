@@ -4,7 +4,6 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
-from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.router import router as api_router
@@ -13,13 +12,6 @@ from app.core.db import engine
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 SPA_DIST = BASE_DIR.parent / "web" / "dist"
-SPA_ROOT_FILES = {
-    "icon.png",
-    "icon.svg",
-    "og.png",
-    "og.svg",
-    "site.webmanifest",
-}
 
 
 @asynccontextmanager
@@ -53,7 +45,6 @@ def create_app() -> FastAPI:
     app.include_router(api_router)
 
     if SPA_DIST.exists():
-        app.mount("/assets", StaticFiles(directory=str(SPA_DIST / "assets")), name="spa_assets")
 
         @app.get("/{full_path:path}")
         async def serve_spa(request: Request, full_path: str) -> FileResponse:
@@ -62,10 +53,9 @@ def create_app() -> FastAPI:
                 from fastapi import HTTPException
 
                 raise HTTPException(status_code=404)
-            if full_path in SPA_ROOT_FILES:
-                file_path = SPA_DIST / full_path
-                if file_path.exists():
-                    return FileResponse(str(file_path))
+            requested = (SPA_DIST / full_path).resolve()
+            if requested.is_file() and SPA_DIST in requested.parents:
+                return FileResponse(str(requested))
             index = SPA_DIST / "index.html"
             if index.exists():
                 return FileResponse(str(index))
