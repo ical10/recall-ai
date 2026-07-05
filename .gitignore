@@ -67,6 +67,7 @@ apps/web/dist/
 .agents/
 .forge/
 .opencode/
+.impeccable/
 skills-lock.json
 
 # Miscellaneous
