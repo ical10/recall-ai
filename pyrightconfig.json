@@ -1,8 +1,0 @@
-{
-  "venvPath": ".",
-  "venv": ".venv",
-  "pythonVersion": "3.11",
-  "extraPaths": ["apps/api"],
-  "typeCheckingMode": "standard",
-  "reportInvalidTypeForm": "none"
-}

@@ -67,6 +67,7 @@ apps/web/dist/
 .agents/
 .forge/
 .opencode/
+skills-lock.json
 
 # Miscellaneous
 plans/
