@@ -50,7 +50,7 @@ def draw_dot_grid(draw: ImageDraw.ImageDraw, width: int, height: int):
 
 
 def draw_hero():
-    width, height = 1097, 622
+    width, height = 1200, 630
     image = Image.new("RGB", (width, height), CREAM)
     draw = ImageDraw.Draw(image)
 
@@ -91,22 +91,22 @@ def draw_hero():
         draw.text((x + 16, legend_y - 8), label, font=font(SANS, 16), fill=INK_SOFT)
 
     shadow_offset = 14
-    rounded(draw, (663 + shadow_offset, 147 + shadow_offset, 1028 + shadow_offset, 438 + shadow_offset), 30, INK, outline=INK, width=0)
-    rounded(draw, (649, 145, 1014, 436), 30, PAPER, outline=INK, width=3)
-    draw.polygon([(681, 143), (777, 139), (779, 169), (681, 175)], fill=HONEY)
+    rounded(draw, (736 + shadow_offset, 147 + shadow_offset, 1101 + shadow_offset, 438 + shadow_offset), 30, INK, outline=INK, width=0)
+    rounded(draw, (722, 145, 1087, 436), 30, PAPER, outline=INK, width=3)
+    draw.polygon([(754, 143), (850, 139), (852, 169), (754, 175)], fill=HONEY)
     for stripe in range(0, 100, 14):
-        draw.line((684 + stripe, 144, 660 + stripe, 174), fill="#FFD989", width=4)
+        draw.line((757 + stripe, 144, 733 + stripe, 174), fill="#FFD989", width=4)
 
-    draw.text((683, 188), "ENGLISH · ADV.", font=monoish, fill=INK_SOFT)
-    draw.text((682, 214), "ephemeral", font=font(SERIF_BLACK, 58), fill=INK)
-    draw.text((685, 284), "Lasting for a very short time.", font=sans, fill=INK_SOFT)
-    draw.text((686, 320), '"The cherry blossoms are', font=font(SANS, 18), fill="#8A88A4")
-    draw.text((686, 346), "ephemeral —", font=font(SANS, 18), fill="#8D8BB8")
+    draw.text((756, 188), "ENGLISH · ADV.", font=monoish, fill=INK_SOFT)
+    draw.text((755, 214), "ephemeral", font=font(SERIF_BLACK, 58), fill=INK)
+    draw.text((758, 284), "Lasting for a very short time.", font=sans, fill=INK_SOFT)
+    draw.text((759, 320), '"The cherry blossoms are', font=font(SANS, 18), fill="#8A88A4")
+    draw.text((759, 346), "ephemeral —", font=font(SANS, 18), fill="#8D8BB8")
 
     buttons = [
-        (("Again", HONEY), 686),
-        (("Good", TEAL), 846),
-        (("Easy", BLUE), 924),
+        (("Again", HONEY), 759),
+        (("Good", TEAL), 919),
+        (("Easy", BLUE), 997),
     ]
     for (label, color), x in buttons:
         rounded(draw, (x, 375, x + 66, 405), 8, color, outline=INK, width=3)
