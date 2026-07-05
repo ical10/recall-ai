@@ -62,7 +62,7 @@ def draw_hero():
 
     serif = font(SERIF_BLACK, 74)
     serif_small = font(SERIF_BLACK, 60)
-    sans = font(SANS, 24)
+    sans = font(SANS, 22)
     sans_bold = font(SANS_BOLD, 22)
     monoish = font(SANS_BOLD, 18)
 
@@ -72,7 +72,11 @@ def draw_hero():
     draw.rectangle((50, 300, 270, 340), fill=MINT)
     draw.text((50, 302), "grows.", font=serif_small, fill=INK)
 
-    body = "A pocket-sized vocabulary trainer that learns how you forget —\nthen feeds you the right word at exactly the right moment."
+    body = (
+        "A pocket-sized vocabulary trainer\n"
+        "that learns how you forget, then feeds\n"
+        "you the right word at exactly the right moment."
+    )
     draw.multiline_text((51, 381), body, font=sans, fill=INK_SOFT, spacing=10)
 
     rounded(draw, (50, 465, 210, 510), 18, ORANGE, outline=ORANGE, width=2)
