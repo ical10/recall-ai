@@ -62,3 +62,11 @@ apps/web/dist/
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+# Agent tool configs — per-machine, never commit
+.agents/
+.forge/
+.opencode/
+
+# Miscellaneous
+plans/
