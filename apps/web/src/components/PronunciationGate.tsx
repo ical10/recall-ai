@@ -21,11 +21,9 @@ function isPronunciationVerdict(value: unknown): value is PronunciationVerdict {
 
 export function PronunciationGate({
   vocabItemId,
-  hasReferenceAudio,
   onDone,
 }: {
   vocabItemId: string;
-  hasReferenceAudio: boolean;
   onDone: () => void;
 }) {
   const [checking, setChecking] = useState(false);
@@ -42,8 +40,8 @@ export function PronunciationGate({
   }, [vocabItemId]);
 
   useEffect(() => {
-    if (!hasReferenceAudio || micWasDenied) onDone();
-  }, [hasReferenceAudio, micWasDenied, onDone]);
+    if (micWasDenied) onDone();
+  }, [micWasDenied, onDone]);
 
   useEffect(() => {
     if (recorder.state === "denied") markSeen(SEEN_KEYS.micDenied);
@@ -107,8 +105,6 @@ export function PronunciationGate({
       void handleSubmit();
     }
   }, [recorder.state, recorder.blob]);
-
-  if (!hasReferenceAudio) return null;
 
   const retry = () => {
     recorder.reset();

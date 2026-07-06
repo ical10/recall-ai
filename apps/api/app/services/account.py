@@ -10,6 +10,11 @@ from app.models.user import User
 from app.models.vocab_item import VocabItem
 from app.services.google_identity import GoogleIdentity
 
+
+def _starter_audio_url(token: str) -> str:
+    return f"/audio/starter/{token}.mp3"
+
+
 STARTER_VOCAB = [
     {"token": "friend", "language": "en", "definition": "a person you like and play with"},
     {"token": "hungry", "language": "en", "definition": "wanting to eat food"},
@@ -26,12 +31,10 @@ STARTER_VOCAB = [
 ]
 
 
-async def _heal_starter_vocab_definitions(session: AsyncSession) -> int:
+async def _heal_starter_vocab(session: AsyncSession) -> int:
     healed = 0
     for entry in STARTER_VOCAB:
         canonical = entry.get("definition", "")
-        if not canonical:
-            continue
         item = (
             await session.execute(
                 select(VocabItem).where(
@@ -40,8 +43,13 @@ async def _heal_starter_vocab_definitions(session: AsyncSession) -> int:
                 )
             )
         ).scalar_one_or_none()
-        if item is not None and not item.definition:
+        if item is None:
+            continue
+        if canonical and not item.definition:
             item.definition = canonical
+            healed += 1
+        if not item.word_audio_url:
+            item.word_audio_url = _starter_audio_url(entry["token"])
             healed += 1
     if healed:
         await session.commit()
@@ -64,8 +72,15 @@ async def _seed_starter_vocab(session: AsyncSession, user: User) -> int:
             item = existing
             if not item.definition and canonical_definition:
                 item.definition = canonical_definition
+            if not item.word_audio_url:
+                item.word_audio_url = _starter_audio_url(token)
         else:
-            item = VocabItem(token=token, language=language, definition=canonical_definition)
+            item = VocabItem(
+                token=token,
+                language=language,
+                definition=canonical_definition,
+                word_audio_url=_starter_audio_url(token),
+            )
             session.add(item)
             await session.flush()
         review = (
@@ -82,7 +97,8 @@ async def _seed_starter_vocab(session: AsyncSession, user: User) -> int:
 
 async def provision_user(session: AsyncSession, identity: GoogleIdentity) -> User:
     """Find-or-create the User for a *verified* Google identity, then ensure their
-    starter deck (seed on first login / no reviews yet, else heal empty definitions).
+    starter deck (seed on first login / no reviews yet, else heal missing
+    definitions and starter audio).
 
     The single provisioning path shared by the web `/auth/callback` and the extension
     `/auth/extension` endpoint — keyed on the verified `sub`, so both logins trust the
@@ -119,5 +135,5 @@ async def provision_user(session: AsyncSession, identity: GoogleIdentity) -> Use
     if is_new or existing_review_id is None:
         await _seed_starter_vocab(session, user)
     else:
-        await _heal_starter_vocab_definitions(session)
+        await _heal_starter_vocab(session)
     return user

@@ -27,12 +27,20 @@ beforeEach(() => {
 });
 
 describe("PronunciationGate", () => {
+  it("renders the say-it control for a card with no reference audio", () => {
+    render(<PronunciationGate vocabItemId="v1" onDone={vi.fn()} />);
+
+    expect(
+      screen.getByRole("button", { name: "🎤 Say the word!" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Skip" })).toBeInTheDocument();
+  });
+
   it("shows the mic pre-prompt only once", async () => {
     const onDone = vi.fn();
     const first = render(
       <PronunciationGate
         vocabItemId="v1"
-        hasReferenceAudio
         onDone={onDone}
       />,
     );
@@ -44,7 +52,6 @@ describe("PronunciationGate", () => {
     render(
       <PronunciationGate
         vocabItemId="v2"
-        hasReferenceAudio
         onDone={onDone}
       />,
     );
@@ -59,7 +66,6 @@ describe("PronunciationGate", () => {
     render(
       <PronunciationGate
         vocabItemId="v1"
-        hasReferenceAudio
         onDone={onDone}
       />,
     );
@@ -93,7 +99,6 @@ describe("PronunciationGate", () => {
     render(
       <PronunciationGate
         vocabItemId="v1"
-        hasReferenceAudio
         onDone={vi.fn()}
       />,
     );
@@ -108,7 +113,6 @@ describe("PronunciationGate", () => {
     render(
       <PronunciationGate
         vocabItemId="v1"
-        hasReferenceAudio
         onDone={onDone}
       />,
     );

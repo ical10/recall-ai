@@ -84,14 +84,16 @@ describe("ReviewPage", () => {
     expect(screen.queryByText("Show Answer")).not.toBeInTheDocument();
   });
 
-  it("auto-passes the gate when reference audio is unavailable", async () => {
+  it("gates a card without reference audio and hides the replay button", async () => {
     mockBatch([makeCard()]);
     render(<ReviewPage />);
     fireEvent.click(screen.getByRole("button", { name: "Show the meaning" }));
 
     expect(
-      await screen.findByRole("button", { name: "😊 Got it!" }),
+      await screen.findByRole("button", { name: "🎤 Say the word!" }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "😊 Got it!" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Hear it again" })).not.toBeInTheDocument();
   });
 
   it("gates every card before showing its rating row", async () => {

@@ -220,7 +220,6 @@ export function ReviewPage() {
           <PronunciationGate
             key={card.review_id}
             vocabItemId={card.vocab_item_id}
-            hasReferenceAudio={hasReferenceAudio}
             onDone={allowRating}
           />
 
