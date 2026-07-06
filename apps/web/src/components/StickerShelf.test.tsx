@@ -10,12 +10,17 @@ vi.mock("@tanstack/react-query", () => ({
 import { useQuery } from "@tanstack/react-query";
 
 const items = [
-  { id: "1", token: "rainbow", language: "en", part_of_speech: null, definition: "a colorful arc", example_sentence: null },
-  { id: "2", token: "happy", language: "en", part_of_speech: null, definition: "feeling good", example_sentence: null },
+  { id: "1", token: "rainbow", language: "en", part_of_speech: null, definition: "a colorful arc", example_sentence: null, word_audio_url: "/audio/starter/rainbow.mp3" },
+  { id: "2", token: "happy", language: "en", part_of_speech: null, definition: "feeling good", example_sentence: null, word_audio_url: null },
 ];
+
+const playSpy = vi.fn().mockResolvedValue(undefined);
 
 beforeEach(() => {
   localStorage.clear();
+  playSpy.mockClear();
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(playSpy);
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
 });
 
 describe("StickerShelf", () => {
@@ -102,6 +107,44 @@ describe("StickerShelf", () => {
 
     expect(screen.queryByText("Tap a sticker to see what it means!")).not.toBeInTheDocument();
     expect(hasSeen(SEEN_KEYS.flip)).toBe(true);
+  });
+
+  it("plays the word audio when flipping a sticker that has it", () => {
+    vi.mocked(useQuery).mockReturnValue({
+      data: { items, page: 1, page_size: 60, total: 2 },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as never);
+
+    render(<StickerShelf onEmptyCta={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show what rainbow means" }));
+    expect(playSpy).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show what rainbow means" }));
+    expect(playSpy).toHaveBeenCalledOnce();
+  });
+
+  it("shows a replay button only when flipped with audio", () => {
+    vi.mocked(useQuery).mockReturnValue({
+      data: { items, page: 1, page_size: 60, total: 2 },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as never);
+
+    render(<StickerShelf onEmptyCta={vi.fn()} />);
+
+    expect(screen.queryByRole("button", { name: "Hear rainbow" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show what rainbow means" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hear rainbow" }));
+    expect(playSpy).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show what happy means" }));
+    expect(screen.queryByRole("button", { name: "Hear happy" })).not.toBeInTheDocument();
+    expect(playSpy).toHaveBeenCalledTimes(2);
   });
 
   it("dismisses the hint on first flip too", () => {

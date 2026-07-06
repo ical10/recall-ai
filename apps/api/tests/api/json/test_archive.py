@@ -151,3 +151,31 @@ def test_archive_unauth_returns_json_401(tmp_path: Path) -> None:
         resp = c.get("/api/archive")
     assert resp.status_code == 401
     assert resp.json()["detail"] == "Not authenticated"
+
+
+def test_archive_includes_word_audio_url(tmp_path: Path) -> None:
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+    user = asyncio.run(_insert_user(factory))
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    async def setup() -> None:
+        async with factory() as s:
+            vi = VocabItem(
+                token="friend",
+                language="en",
+                definition="a person you like",
+                word_audio_url="/audio/starter/friend.mp3",
+            )
+            s.add(vi)
+            await s.flush()
+            s.add(Review(user_id=user.id, vocab_item_id=vi.id, due_at=datetime.now(UTC)))
+            await s.commit()
+        await _insert_vocab_with_review(factory, user.id, "silent")
+
+    asyncio.run(setup())
+    with TestClient(app) as c:
+        resp = c.get("/api/archive")
+    assert resp.status_code == 200
+    by_token = {item["token"]: item for item in resp.json()["items"]}
+    assert by_token["friend"]["word_audio_url"] == "/audio/starter/friend.mp3"
+    assert by_token["silent"]["word_audio_url"] is None

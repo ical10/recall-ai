@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchApi } from "@/api/client";
 import { Button } from "@/components/ui/Button";
@@ -13,6 +13,7 @@ interface VocabItem {
   part_of_speech: string | null;
   definition: string;
   example_sentence: string | null;
+  word_audio_url: string | null;
 }
 
 interface VocabListResponse {
@@ -37,6 +38,15 @@ export function StickerShelf({ onEmptyCta }: { onEmptyCta: () => void }) {
   const [visibleCount, setVisibleCount] = useState(PAGE_STEP);
   const [flipped, setFlipped] = useState<Record<string, boolean>>({});
   const [hintVisible, setHintVisible] = useState(() => !hasSeen(SEEN_KEYS.flip));
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const playWord = (url: string | null) => {
+    if (!url) return;
+    audioRef.current?.pause();
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    void audio.play().catch(() => {});
+  };
 
   const pageSize = Math.min(visibleCount, MAX_PAGE_SIZE);
   const { data, isLoading, error, refetch } = useQuery<VocabListResponse>({
@@ -50,15 +60,17 @@ export function StickerShelf({ onEmptyCta }: { onEmptyCta: () => void }) {
     setHintVisible(false);
   };
 
-  const toggleFlip = (id: string) => {
-    setFlipped((prev) => ({ ...prev, [id]: !prev[id] }));
+  const toggleFlip = (item: VocabItem) => {
+    const opening = !flipped[item.id];
+    setFlipped((prev) => ({ ...prev, [item.id]: !prev[item.id] }));
+    if (opening) playWord(item.word_audio_url);
     if (hintVisible) dismissHint();
   };
 
-  const handleKeyDown = (id: string) => (e: React.KeyboardEvent<HTMLButtonElement>) => {
+  const handleKeyDown = (item: VocabItem) => (e: React.KeyboardEvent<HTMLButtonElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      toggleFlip(id);
+      toggleFlip(item);
     }
   };
 
@@ -139,29 +151,39 @@ export function StickerShelf({ onEmptyCta }: { onEmptyCta: () => void }) {
           const tilt = i % 2 === 0 ? "tilt-l" : "tilt-r";
 
           return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => toggleFlip(item.id)}
-              onKeyDown={handleKeyDown(item.id)}
-              aria-label={`Show what ${item.token} means`}
-              aria-expanded={isFlipped}
-              className={cn(
-                "flex min-h-[120px] flex-col items-center justify-center gap-1 rounded-2xl border-2 border-ink p-4 text-center shadow-pop transition-transform hover:-translate-y-0.5",
-                tint,
-                tilt,
+            <div key={item.id} className={cn("relative", tilt)}>
+              <button
+                type="button"
+                onClick={() => toggleFlip(item)}
+                onKeyDown={handleKeyDown(item)}
+                aria-label={`Show what ${item.token} means`}
+                aria-expanded={isFlipped}
+                className={cn(
+                  "flex min-h-[120px] w-full flex-col items-center justify-center gap-1 rounded-2xl border-2 border-ink p-4 text-center shadow-pop transition-transform hover:-translate-y-0.5",
+                  tint,
+                )}
+              >
+                {isFlipped ? (
+                  <span className="line-clamp-3 text-sm font-medium text-ink-soft">
+                    {item.definition || "…"}
+                  </span>
+                ) : (
+                  <span className="line-clamp-2 break-words font-display text-xl font-black text-ink">
+                    {item.token}
+                  </span>
+                )}
+              </button>
+              {isFlipped && item.word_audio_url && (
+                <button
+                  type="button"
+                  onClick={() => playWord(item.word_audio_url)}
+                  aria-label={`Hear ${item.token}`}
+                  className="absolute -right-2 -top-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border-2 border-ink bg-cream-50 shadow-pop-sm hover:bg-cream-100"
+                >
+                  🔊
+                </button>
               )}
-            >
-              {isFlipped ? (
-                <span className="line-clamp-3 text-sm font-medium text-ink-soft">
-                  {item.definition || "…"}
-                </span>
-              ) : (
-                <span className="line-clamp-2 break-words font-display text-xl font-black text-ink">
-                  {item.token}
-                </span>
-              )}
-            </button>
+            </div>
           );
         })}
       </div>
