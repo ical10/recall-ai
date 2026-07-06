@@ -190,6 +190,20 @@ What the repo does:
 - Pull requests still run the same checks before Railway deploys the preview.
 - Once a PR is opened, Railway creates the preview environment and surfaces the preview URL in the Railway/GitHub integration UI.
 
+### Fixed preview URL (Google OAuth)
+
+Native PR environments mint a fresh domain per PR, but Google OAuth only accepts pre-registered redirect URIs (no wildcards), so sign-in never works on those URLs. For any preview that needs auth, use the fixed `preview` branch flow instead:
+
+One-time setup:
+
+1. In Railway, create a persistent `staging` environment; point the `web` service (plus worker/beat if the preview needs them) at the **`preview` branch** as its deploy source.
+2. Generate a Railway domain for `web` in that environment — this URL never changes.
+3. Set the staging environment variables like production, with `GOOGLE_REDIRECT_URI=https://<staging-domain>/auth/callback` and `SESSION_HTTPS_ONLY=true`.
+4. In the Google Cloud console, add `https://<staging-domain>/auth/callback` to the OAuth client's authorized redirect URIs — once, done forever.
+5. Enable `Wait for CI` for the staging `web` service (CI runs on `preview` pushes).
+
+Per-PR usage: check out the branch you want to preview and run `pnpm preview:push` (force-pushes `HEAD` to `preview`). Railway redeploys staging with that code on the fixed URL, OAuth included. One branch previews at a time — last push wins.
+
 Official docs:
 
 - https://docs.railway.com/environments

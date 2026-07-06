@@ -12,6 +12,7 @@
     "test:web": "pnpm --filter web test",
     "lint": "uv run ruff check apps/api && uv run ruff format --check apps/api && uv run mypy apps/api/app",
     "build": "pnpm --filter web build",
+    "preview:push": "git push --force origin HEAD:preview",
     "gen:types": "openapi-typescript http://localhost:8000/openapi.json -o apps/web/src/api/schema.d.ts"
   },
   "devDependencies": {
