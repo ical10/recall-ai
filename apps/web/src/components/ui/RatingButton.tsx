@@ -1,32 +1,40 @@
 import { cn } from "./cn";
 
-type RatingColor = "berry" | "honey" | "teal" | "sky";
+const RATINGS = {
+  0: { emoji: "🙈", label: "Oops!", color: "berry" },
+  2: { emoji: "🤔", label: "Tricky!", color: "honey" },
+  4: { emoji: "😊", label: "Got it!", color: "teal" },
+  5: { emoji: "🔥", label: "So easy!", color: "sky" },
+} as const;
+
+export type RatingQuality = keyof typeof RATINGS;
 
 export function RatingButton({
-  emoji,
-  label,
   quality,
-  color,
   onClick,
   className,
   ...props
 }: {
-  emoji: string;
-  label: string;
-  quality: number;
-  color: RatingColor;
+  quality: RatingQuality;
   onClick?: () => void;
   className?: string;
-} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+} & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "onClick">) {
+  const rating = RATINGS[quality];
   return (
     <button
-      className={cn("btn-pop", `btn-pop--${color}`, "flex-col py-4", className)}
+      aria-label={`${rating.emoji} ${rating.label}`}
+      className={cn(
+        "btn-pop",
+        `btn-pop--${rating.color}`,
+        "flex-col py-4",
+        className,
+      )}
       onClick={onClick}
       type="button"
       {...props}
     >
-      <span className="text-2xl">{emoji}</span>
-      <span className="text-[10px] font-bold uppercase tracking-widest">{label}</span>
+      <span className="text-2xl">{rating.emoji}</span>
+      <span className="text-xs font-bold tracking-wide">{rating.label}</span>
     </button>
   );
 }

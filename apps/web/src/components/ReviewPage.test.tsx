@@ -1,17 +1,22 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ReviewPage } from "@/components/ReviewPage";
 import { useReviewSession, type Card } from "@/store/reviewSession";
 
-vi.mock("@tanstack/react-query", () => ({
-  useQuery: vi.fn(),
+vi.mock("@tanstack/react-query", () => ({ useQuery: vi.fn() }));
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({ children, to, ...props }: React.PropsWithChildren<{ to: string }>) => (
+    <a href={to} {...props}>
+      {children}
+    </a>
+  ),
 }));
-
 vi.mock("@/hooks/useVoiceRecorder", () => ({
   useVoiceRecorder: () => ({
     state: "idle",
     blob: null,
-    supported: false,
+    supported: true,
+    remainingSeconds: 4,
     start: vi.fn(),
     stop: vi.fn(),
     reset: vi.fn(),
@@ -42,97 +47,105 @@ function makeCard(overrides: Partial<Card> = {}): Card {
   };
 }
 
+function mockBatch(cards: Card[]) {
+  vi.mocked(useQuery).mockReturnValue({
+    data: { cards },
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  } as never);
+}
+
 beforeEach(() => {
+  localStorage.clear();
+  useReviewSession.setState({ outbox: [], flushing: false });
   useReviewSession.getState().reset();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ applied: 1, skipped: 0 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ),
+  );
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
 });
 
 describe("ReviewPage", () => {
-  it("shows loading state while fetching batch", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: undefined,
-      isLoading: true,
-      error: null,
-    } as never);
+  it("makes the prompt card the reveal button", () => {
+    mockBatch([makeCard()]);
     render(<ReviewPage />);
-    expect(screen.queryByText("serendipity")).not.toBeInTheDocument();
+
+    expect(screen.getByRole("button", { name: "Show the meaning" })).toHaveTextContent(
+      "Tap to see!",
+    );
+    expect(screen.queryByText("Show Answer")).not.toBeInTheDocument();
   });
 
-  it("renders the current card token when showing", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: { cards: [makeCard()] },
-      isLoading: false,
-      error: null,
-    } as never);
+  it("auto-passes the gate when reference audio is unavailable", async () => {
+    mockBatch([makeCard()]);
     render(<ReviewPage />);
-    expect(screen.getByText("serendipity")).toBeInTheDocument();
-    expect(screen.getByText(/Show Answer/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show the meaning" }));
+
+    expect(
+      await screen.findByRole("button", { name: "😊 Got it!" }),
+    ).toBeInTheDocument();
   });
 
-  it("reveals definition and rating buttons on Show Answer click", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: { cards: [makeCard()] },
-      isLoading: false,
-      error: null,
-    } as never);
+  it("gates every card before showing its rating row", async () => {
+    mockBatch([
+      makeCard({ token: "first", word_audio_url: "/first.mp3" }),
+      makeCard({
+        token: "second",
+        review_id: "r2",
+        vocab_item_id: "v2",
+        word_audio_url: "/second.mp3",
+      }),
+    ]);
     render(<ReviewPage />);
-    fireEvent.click(screen.getByText(/Show Answer/));
-    fireEvent.click(screen.getByText("Skip"));
-    expect(screen.getByText("the occurrence of events by chance")).toBeInTheDocument();
-    expect(screen.getByText(/Finding that book was pure serendipity/)).toBeInTheDocument();
-    expect(screen.getByText("Good")).toBeInTheDocument();
-  });
 
-  it("advances to next card after rating", () => {
-    const cards = [
-      makeCard({ token: "first" }),
-      makeCard({ token: "second", review_id: "r2", vocab_item_id: "v2" }),
-    ];
-    vi.mocked(useQuery).mockReturnValue({
-      data: { cards },
-      isLoading: false,
-      error: null,
-    } as never);
-    render(<ReviewPage />);
-    expect(screen.getByText("first")).toBeInTheDocument();
-    fireEvent.click(screen.getByText(/Show Answer/));
-    fireEvent.click(screen.getByText("Skip"));
-    fireEvent.click(screen.getByText("Good"));
+    fireEvent.click(screen.getByRole("button", { name: "Show the meaning" }));
+    expect(screen.queryByRole("button", { name: "😊 Got it!" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    fireEvent.click(screen.getByRole("button", { name: "😊 Got it!" }));
+
     expect(screen.getByText("second")).toBeInTheDocument();
-    expect(screen.queryByText(/Show Answer/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show the meaning" }));
+    expect(screen.getByRole("button", { name: "Skip" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "😊 Got it!" })).not.toBeInTheDocument();
   });
 
-  it("shows done screen when all cards completed", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: { cards: [makeCard()] },
-      isLoading: false,
-      error: null,
-    } as never);
-    render(<ReviewPage />);
-    fireEvent.click(screen.getByText(/Show Answer/));
-    fireEvent.click(screen.getByText("Skip"));
-    fireEvent.click(screen.getByText("Good"));
-    expect(screen.getByText(/All caught up/)).toBeInTheDocument();
-    expect(screen.getByText(/Back to deck/)).toBeInTheDocument();
-  });
-
-  it("shows empty message when no cards due", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: { cards: [] },
-      isLoading: false,
-      error: null,
-    } as never);
-    render(<ReviewPage />);
-    expect(screen.getByText(/No cards due/)).toBeInTheDocument();
-  });
-
-  it("reveals on Space keypress", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: { cards: [makeCard()] },
-      isLoading: false,
-      error: null,
-    } as never);
+  it("reveals with the Space key", () => {
+    mockBatch([makeCard()]);
     render(<ReviewPage />);
     fireEvent.keyDown(window, { key: " " });
     expect(screen.getByText("the occurrence of events by chance")).toBeInTheDocument();
+  });
+
+  it("shows the zero-due escape", () => {
+    mockBatch([]);
+    render(<ReviewPage />);
+    expect(screen.getByText("No words today!")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Add a new word" })).toHaveAttribute(
+      "href",
+      "/dashboard",
+    );
+  });
+
+  it("shows the friendly load error and retries", async () => {
+    const refetch = vi.fn();
+    vi.mocked(useQuery).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error("offline"),
+      refetch,
+    } as never);
+    render(<ReviewPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(refetch).toHaveBeenCalledOnce());
+    expect(screen.getByRole("alert")).toHaveTextContent("Your words did not load.");
   });
 });

@@ -5,5 +5,8 @@ import { ReviewPage } from "@/components/ReviewPage";
 export const reviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/review",
+  beforeLoad: () => {
+    document.title = "Practice · RecallAI";
+  },
   component: ReviewPage,
 });

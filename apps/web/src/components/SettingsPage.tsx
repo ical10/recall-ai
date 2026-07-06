@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchApi } from "@/api/client";
 import { Marker } from "@/components/ui/Marker";
-import { Eyebrow } from "@/components/ui/Eyebrow";
 import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 
 interface UserSettings {
   interest_tags: string[];
@@ -12,7 +12,7 @@ interface UserSettings {
 export function SettingsPage() {
   const queryClient = useQueryClient();
 
-  const { data, isLoading, error } = useQuery<UserSettings>({
+  const { data, isLoading, error, refetch } = useQuery<UserSettings>({
     queryKey: ["settings"],
     queryFn: (): Promise<UserSettings> =>
       fetchApi<UserSettings>("/api/settings"),
@@ -30,7 +30,20 @@ export function SettingsPage() {
   });
 
   if (isLoading) return <SettingsSkeleton />;
-  if (error) return <div className="p-8 text-berry">Failed to load settings</div>;
+  if (error) {
+    return (
+      <main className="max-w-2xl mx-auto px-4 py-8">
+        <Card className="text-center" tilt="l">
+          <p className="font-medium text-ink-soft">
+            Couldn&apos;t load settings. Try again.
+          </p>
+          <Button variant="ink" className="mt-4" onClick={() => refetch()}>
+            Try again
+          </Button>
+        </Card>
+      </main>
+    );
+  }
   if (!data) return null;
 
   const selected = new Set(data.interest_tags);
@@ -49,7 +62,7 @@ export function SettingsPage() {
       </h1>
 
       <Card>
-        <Eyebrow className="mb-4 block">Interest Tags</Eyebrow>
+        <h2 className="mb-4 font-display text-2xl font-black text-ink">Interests</h2>
         <div className="flex flex-wrap gap-2">
           {data.all_tags.map((tag) => {
             const active = selected.has(tag);

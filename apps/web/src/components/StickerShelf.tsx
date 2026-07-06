@@ -1,0 +1,181 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { fetchApi } from "@/api/client";
+import { Button } from "@/components/ui/Button";
+import { Washi } from "@/components/ui/Washi";
+import { cn } from "@/components/ui/cn";
+import { SEEN_KEYS, hasSeen, markSeen } from "@/lib/seen";
+
+interface VocabItem {
+  id: string;
+  token: string;
+  language: string;
+  part_of_speech: string | null;
+  definition: string;
+  example_sentence: string | null;
+}
+
+interface VocabListResponse {
+  items: VocabItem[];
+  page: number;
+  page_size: number;
+  total: number;
+}
+
+const TINT_CLASSES = [
+  "bg-tangerine-light",
+  "bg-teal-light",
+  "bg-berry-light",
+  "bg-honey-light",
+  "bg-sky-light",
+];
+
+const MAX_PAGE_SIZE = 100;
+const PAGE_STEP = 60;
+
+export function StickerShelf({ onEmptyCta }: { onEmptyCta: () => void }) {
+  const [visibleCount, setVisibleCount] = useState(PAGE_STEP);
+  const [flipped, setFlipped] = useState<Record<string, boolean>>({});
+  const [hintVisible, setHintVisible] = useState(() => !hasSeen(SEEN_KEYS.flip));
+
+  const pageSize = Math.min(visibleCount, MAX_PAGE_SIZE);
+  const { data, isLoading, error, refetch } = useQuery<VocabListResponse>({
+    queryKey: ["sticker-shelf", pageSize],
+    queryFn: (): Promise<VocabListResponse> =>
+      fetchApi<VocabListResponse>(`/api/archive?page=1&page_size=${pageSize}`),
+  });
+
+  const dismissHint = () => {
+    markSeen(SEEN_KEYS.flip);
+    setHintVisible(false);
+  };
+
+  const toggleFlip = (id: string) => {
+    setFlipped((prev) => ({ ...prev, [id]: !prev[id] }));
+    if (hintVisible) dismissHint();
+  };
+
+  const handleKeyDown = (id: string) => (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      toggleFlip(id);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <section>
+        <h2 className="font-display text-2xl font-black text-ink mb-4">My sticker shelf</h2>
+        <div className="grid grid-cols-2 gap-4 animate-pulse sm:grid-cols-3">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-28 rounded-2xl bg-cream-200" />
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section>
+        <h2 className="font-display text-2xl font-black text-ink mb-4">My sticker shelf</h2>
+        <div role="alert" className="tilt-l card-paper text-center">
+          <p className="font-display text-xl font-black text-ink">Your words did not load.</p>
+          <Button variant="ink" className="mt-4" onClick={() => refetch()}>
+            Try again
+          </Button>
+        </div>
+      </section>
+    );
+  }
+
+  if (!data) return null;
+
+  if (data.items.length === 0) {
+    return (
+      <section>
+        <h2 className="font-display text-2xl font-black text-ink mb-4">My sticker shelf</h2>
+        <button
+          type="button"
+          onClick={onEmptyCta}
+          className="tilt-l-2 relative w-full rounded-2xl border-2 border-dashed border-ink/40 bg-cream-50 p-8 text-center"
+        >
+          <Washi color="sky" className="-top-3 left-8 tilt-r-2" />
+          <p className="font-display text-xl font-black text-ink">Your shelf is empty.</p>
+          <p className="mt-2 text-ink-soft">Add a word. It will live here!</p>
+        </button>
+      </section>
+    );
+  }
+
+  const canShowMore = data.total > data.items.length && pageSize < MAX_PAGE_SIZE;
+
+  return (
+    <section>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="font-display text-2xl font-black text-ink">My sticker shelf</h2>
+      </div>
+
+      {hintVisible && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-full border-2 border-ink bg-cream-50 px-4 py-2">
+          <span className="text-sm font-medium text-ink-soft">
+            Tap a sticker to see what it means!
+          </span>
+          <button
+            type="button"
+            aria-label="Dismiss hint"
+            onClick={dismissHint}
+            className="shrink-0 text-ink-mute hover:text-ink"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        {data.items.map((item, i) => {
+          const isFlipped = !!flipped[item.id];
+          const tint = TINT_CLASSES[i % TINT_CLASSES.length];
+          const tilt = i % 2 === 0 ? "tilt-l" : "tilt-r";
+
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => toggleFlip(item.id)}
+              onKeyDown={handleKeyDown(item.id)}
+              aria-label={`Show what ${item.token} means`}
+              aria-expanded={isFlipped}
+              className={cn(
+                "flex min-h-[120px] flex-col items-center justify-center gap-1 rounded-2xl border-2 border-ink p-4 text-center shadow-pop transition-transform hover:-translate-y-0.5",
+                tint,
+                tilt,
+              )}
+            >
+              {isFlipped ? (
+                <span className="line-clamp-3 text-sm font-medium text-ink-soft">
+                  {item.definition || "…"}
+                </span>
+              ) : (
+                <span className="line-clamp-2 break-words font-display text-xl font-black text-ink">
+                  {item.token}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {canShowMore && (
+        <div className="mt-6 text-center">
+          <Button
+            variant="ghost"
+            onClick={() => setVisibleCount((v) => Math.min(v + PAGE_STEP, MAX_PAGE_SIZE))}
+          >
+            Show more
+          </Button>
+        </div>
+      )}
+    </section>
+  );
+}

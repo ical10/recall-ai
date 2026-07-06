@@ -1,40 +1,79 @@
-import { useState, useEffect } from "react";
-import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
+import { hasSeen, markSeen, SEEN_KEYS } from "@/lib/seen";
 
 interface PronunciationVerdict {
   said_target: boolean;
-  heard: string;
   confidence: number;
-  feedback: string;
+}
+
+function isPronunciationVerdict(value: unknown): value is PronunciationVerdict {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "said_target" in value &&
+    "confidence" in value &&
+    typeof value.said_target === "boolean" &&
+    typeof value.confidence === "number"
+  );
 }
 
 export function PronunciationGate({
   vocabItemId,
+  hasReferenceAudio,
   onDone,
 }: {
   vocabItemId: string;
+  hasReferenceAudio: boolean;
   onDone: () => void;
 }) {
   const [checking, setChecking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [error, setError] = useState(false);
   const [verdict, setVerdict] = useState<PronunciationVerdict | null>(null);
   const recorder = useVoiceRecorder();
+  const micWasDenied = hasSeen(SEEN_KEYS.micDenied);
 
   useEffect(() => {
     setVerdict(null);
-    setError(null);
+    setError(false);
+    setShowPrompt(false);
   }, [vocabItemId]);
 
-  if (!recorder.supported) {
-    return (
-      <div className="text-center mt-4">
-        <Button variant="ghost" onClick={onDone}>
-          Skip
-        </Button>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (!hasReferenceAudio || micWasDenied) onDone();
+  }, [hasReferenceAudio, micWasDenied, onDone]);
+
+  useEffect(() => {
+    if (recorder.state === "denied") markSeen(SEEN_KEYS.micDenied);
+  }, [recorder.state]);
+
+  useEffect(() => {
+    if (verdict?.said_target && verdict.confidence >= 0.6) {
+      const timer = setTimeout(onDone, 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [onDone, verdict]);
+
+  const startRecording = async () => {
+    if (!hasSeen(SEEN_KEYS.mic)) {
+      try {
+        const permission = await navigator.permissions?.query({
+          name: "microphone" as PermissionName,
+        });
+        if (!permission || permission.state === "prompt") {
+          setShowPrompt(true);
+          return;
+        }
+      } catch {
+        setShowPrompt(true);
+        return;
+      }
+      markSeen(SEEN_KEYS.mic);
+    }
+    await recorder.start();
+  };
 
   const handleSubmit = async () => {
     if (!recorder.blob) return;
@@ -43,68 +82,143 @@ export function PronunciationGate({
       const form = new FormData();
       form.append("audio", recorder.blob, "recording.webm");
       form.append("vocab_item_id", vocabItemId);
-      const resp = await fetch(
+      const response = await fetch(
         `/api/review/pronunciation?vocab_item_id=${encodeURIComponent(vocabItemId)}`,
-        {
-          method: "POST",
-          body: form,
-          credentials: "include",
-        }
+        { method: "POST", body: form, credentials: "include" },
       );
-      if (!resp.ok) {
-        if (resp.status === 503) {
-          onDone();
-          return;
-        }
-        setError("Hmm, couldn't check that — try again");
+      if (response.status === 503) {
+        onDone();
         return;
       }
-      setError(null);
-      const data: PronunciationVerdict = await resp.json();
+      if (!response.ok) throw new Error("Pronunciation request failed");
+      const data: unknown = await response.json();
+      if (!isPronunciationVerdict(data)) throw new Error("Invalid response");
+      setError(false);
       setVerdict(data);
-      if (data.said_target && data.confidence >= 0.6) {
-        setTimeout(onDone, 1500);
-      }
     } catch {
-      setError("Hmm, couldn't check that — try again");
+      setError(true);
     } finally {
       setChecking(false);
     }
   };
 
   useEffect(() => {
-    if (
-      recorder.state === "ready" &&
-      recorder.blob &&
-      !checking &&
-      !verdict
-    ) {
-      handleSubmit();
+    if (recorder.state === "ready" && recorder.blob && !checking && !verdict) {
+      void handleSubmit();
     }
-  }, [recorder.state, recorder.blob]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [recorder.state, recorder.blob]);
 
-  if (verdict && verdict.said_target && verdict.confidence >= 0.6) {
+  if (!hasReferenceAudio) return null;
+
+  const retry = () => {
+    recorder.reset();
+    setVerdict(null);
+    setError(false);
+  };
+
+  if (micWasDenied && recorder.state !== "denied") {
     return (
-      <div className="text-center mt-4 text-teal text-sm font-medium">
-        ✅ {verdict.feedback}
+      <div className="mt-4" aria-live="polite">
+        <span className="inline-flex min-h-11 items-center rounded-full border-2 border-ink bg-berry-light px-4 text-sm font-bold text-ink">
+          🎤 off — say it out loud!
+        </span>
       </div>
     );
   }
 
+  if (showPrompt) {
+    return (
+      <div
+        className="card-paper mt-4 border-2 border-ink bg-honey-light text-left"
+        aria-live="polite"
+      >
+        <h2 className="font-display text-2xl font-black text-ink">
+          We want to hear you!
+        </h2>
+        <p className="mt-2 text-ink-soft">Your tablet will ask a question.</p>
+        <p className="text-ink-soft">Tap &quot;Allow&quot;. Then we can hear you!</p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <Button
+            variant="honey"
+            onClick={() => {
+              markSeen(SEEN_KEYS.mic);
+              setShowPrompt(false);
+              void recorder.start();
+            }}
+          >
+            Let&apos;s go!
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              markSeen(SEEN_KEYS.mic);
+              onDone();
+            }}
+          >
+            Not now
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (recorder.state === "denied") {
+    return (
+      <div
+        className="card-paper mt-4 border-2 border-ink bg-berry-light"
+        aria-live="polite"
+      >
+        <h2 className="font-display text-2xl font-black text-ink">
+          That&apos;s okay!
+        </h2>
+        <p className="mt-2 text-ink-soft">We can&apos;t hear you this time.</p>
+        <p className="text-ink-soft">
+          Say the word out loud. Then pick a face!
+        </p>
+        <Button variant="berry" className="mt-4" onClick={onDone}>
+          Keep going
+        </Button>
+      </div>
+    );
+  }
+
+  if (recorder.state === "unsupported") {
+    return (
+      <div className="card-paper mt-4" aria-live="polite">
+        <p className="text-ink-soft">
+          We can&apos;t hear you here. Say the word out loud!
+        </p>
+        <Button variant="ghost" className="mt-4" onClick={onDone}>
+          Keep going
+        </Button>
+      </div>
+    );
+  }
+
+  const succeeded = verdict?.said_target && verdict.confidence >= 0.6;
+
   return (
-    <div className="mt-4 mb-8 space-y-3 text-center">
+    <div className="mt-4 space-y-3 text-center" aria-live="polite">
       {error && (
-        <div className="text-amber-600 text-sm mb-2">{error}</div>
+        <p className="text-sm font-medium text-honey-dark">
+          We could not hear you. Try again!
+        </p>
       )}
 
-      {verdict && !verdict.said_target && (
-        <div className="text-berry text-sm mb-2">🔁 {verdict.feedback}</div>
+      {succeeded && (
+        <p className="text-sm font-bold text-teal">✅ You said it!</p>
+      )}
+
+      {verdict && !succeeded && (
+        <p className="text-sm font-bold text-berry">
+          🔁 Almost! Try again or pick a face.
+        </p>
       )}
 
       {recorder.state === "idle" && (
-        <div className="flex items-center justify-center gap-3">
-          <Button variant="primary" onClick={recorder.start}>
-            🎤 Say it
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Button variant="primary" onClick={() => void startRecording()}>
+            🎤 Say the word!
           </Button>
           <Button variant="ghost" onClick={onDone}>
             Skip
@@ -113,18 +227,29 @@ export function PronunciationGate({
       )}
 
       {recorder.state === "recording" && (
-        <div className="space-y-2">
-          <div className="text-sm animate-pulse text-berry">🎤 Recording...</div>
+        <div className="space-y-3">
+          <p className="font-medium text-berry">🎤 We are listening!</p>
+          <progress
+            aria-label={`${recorder.remainingSeconds} seconds left`}
+            className="h-3 w-full accent-berry"
+            max={4}
+            value={recorder.remainingSeconds}
+          />
+          <p className="text-sm text-ink-soft">{recorder.remainingSeconds}s</p>
           <Button variant="ghost" onClick={recorder.stop}>
-            Stop
+            I said it!
           </Button>
         </div>
       )}
 
-      {recorder.state === "ready" && !checking && (
-        <div className="flex items-center justify-center gap-3">
-          <Button variant="ghost" onClick={() => { recorder.reset(); setVerdict(null); setError(null); }}>
-            🔁 Retry
+      {recorder.state === "ready" && !checking && !verdict && !error && (
+        <p className="text-sm text-ink-soft">Checking your word…</p>
+      )}
+
+      {(error || (verdict && !succeeded)) && (
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Button variant="ghost" onClick={retry}>
+            Try again
           </Button>
           <Button variant="ghost" onClick={onDone}>
             Skip
@@ -133,7 +258,12 @@ export function PronunciationGate({
       )}
 
       {checking && (
-        <div className="text-sm animate-pulse text-ink-mute">Checking pronunciation...</div>
+        <div className="space-y-3">
+          <p className="text-sm text-ink-soft">Checking your word…</p>
+          <Button variant="ghost" onClick={onDone}>
+            Skip
+          </Button>
+        </div>
       )}
     </div>
   );

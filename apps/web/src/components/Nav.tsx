@@ -49,6 +49,22 @@ export function Nav() {
         </Link>
 
         <div className="flex items-center gap-3">
+          {user && !isLoading && (
+            <>
+              <Link
+                to="/dashboard"
+                className="text-sm font-semibold text-ink-mute hover:text-ink"
+              >
+                My Words
+              </Link>
+              <Link
+                to="/review"
+                className="text-sm font-semibold text-ink-mute hover:text-ink"
+              >
+                Practice
+              </Link>
+            </>
+          )}
           <Link
             to="/about"
             className="hidden text-sm font-semibold text-ink-mute hover:text-ink sm:inline"
@@ -58,16 +74,10 @@ export function Nav() {
           {user && !isLoading ? (
             <>
               <Link
-                to="/dashboard"
+                to="/grown-ups"
                 className="hidden text-sm font-semibold text-ink-mute hover:text-ink sm:inline"
               >
-                Deck
-              </Link>
-              <Link
-                to="/review"
-                className="hidden text-sm font-semibold text-ink-mute hover:text-ink sm:inline"
-              >
-                Review
+                Grown-ups
               </Link>
               <Link
                 to="/settings"

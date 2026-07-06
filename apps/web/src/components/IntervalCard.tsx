@@ -4,6 +4,12 @@ interface RecentReview {
   reviewed_at: string;
 }
 
+function intervalPhrase(days: number): string {
+  if (days <= 0) return "Back today";
+  if (days === 1) return "Back tomorrow";
+  return `Back in ${days} days`;
+}
+
 export function IntervalCard({ review, index }: { review: RecentReview; index: number }) {
   const bg =
     review.interval_days >= 7
@@ -26,19 +32,15 @@ export function IntervalCard({ review, index }: { review: RecentReview; index: n
         <div>
           <p className="font-display text-lg font-black leading-none text-ink">{review.token}</p>
           <p className="mt-1 font-mono text-[11px] text-ink-mute">
-            {new Date(review.reviewed_at).toLocaleDateString("en-US", {
+            {new Date(review.reviewed_at).toLocaleDateString(undefined, {
               month: "short",
               day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-              timeZone: "UTC",
-            })}{" "}
-            UTC
+            })}
           </p>
         </div>
       </div>
-      <span className="font-mono text-[11px] uppercase tracking-widest text-ink-mute">
-        interval
+      <span className="text-sm font-semibold text-ink-soft">
+        {intervalPhrase(review.interval_days)}
       </span>
     </li>
   );
