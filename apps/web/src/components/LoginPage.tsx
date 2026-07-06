@@ -23,21 +23,24 @@ export function LoginPage() {
 
       <div className="relative w-full max-w-md">
         <Card size="lg" tilt="l-2" animate="pop-in" washi={<Washi color="berry" className="-top-4 left-12 tilt-r-2" />}>
-          <Eyebrow>Spaced-repetition vocabulary</Eyebrow>
+          <Eyebrow>For grown-ups</Eyebrow>
           <h1 className="mt-3 font-display text-5xl font-black leading-[0.95] text-ink">
             Words that <Marker>stick</Marker>.
           </h1>
           <p className="mt-4 leading-relaxed text-ink-soft">
-            Catch each new word right before you forget it — your deck and streak
-            are waiting.
+            Sign in once with Google. Your child practices on their own.
           </p>
 
           <div className="mt-7">
             <GoogleSignInButton />
           </div>
 
+          <p className="mt-4 text-center text-sm font-medium text-ink-soft">
+            Then give it to your child. Words are ready!
+          </p>
+
           <p className="mt-5 text-center text-xs text-ink-mute">
-            We only see your name and email. No noise.
+            We only see your name and email.
           </p>
         </Card>
 
@@ -47,7 +50,7 @@ export function LoginPage() {
             to="/about"
             className="text-ink underline decoration-tangerine decoration-2 underline-offset-4 hover:text-tangerine"
           >
-            Read what Recall is →
+            See how Recall works →
           </Link>
         </p>
       </div>

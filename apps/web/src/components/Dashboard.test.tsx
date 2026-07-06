@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { Dashboard } from "@/components/Dashboard";
 
@@ -6,70 +6,69 @@ vi.mock("@tanstack/react-query", () => ({
   useQuery: vi.fn(),
 }));
 
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => vi.fn(),
+  Link: ({ children, ...props }: { children: React.ReactNode }) => (
+    <a {...props}>{children}</a>
+  ),
+}));
+
+vi.mock("@/components/StickerShelf", () => ({
+  StickerShelf: () => <section data-testid="sticker-shelf" />,
+}));
+
 import { useQuery } from "@tanstack/react-query";
 
+function mockStats(overrides: Record<string, unknown> = {}) {
+  vi.mocked(useQuery).mockReturnValue({
+    data: {
+      due_today: 5,
+      total_reviews: 42,
+      current_streak: 3,
+      recent: [],
+      unseen_milestone: null,
+      ...overrides,
+    },
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  } as never);
+}
+
 describe("Dashboard", () => {
-  it("renders due_today, total_reviews, and streak", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: {
-        due_today: 5,
-        total_reviews: 42,
-        current_streak: 3,
-        recent: [],
-        unseen_milestone: null,
-      },
-      isLoading: false,
-      error: null,
-    } as never);
-
-    render(<Dashboard />);
-
-    expect(screen.getByText("5")).toBeInTheDocument();
-    expect(screen.getByText("42")).toBeInTheDocument();
-    expect(screen.getByText(/3/)).toBeInTheDocument();
-    expect(screen.getByText("Due Today")).toBeInTheDocument();
-    expect(screen.getByText("Total Reviews")).toBeInTheDocument();
-    expect(screen.getByText("Streak")).toBeInTheDocument();
+  beforeEach(() => {
+    localStorage.clear();
   });
 
-  it("renders milestone banner when unseen_milestone is set", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: {
-        due_today: 0,
-        total_reviews: 30,
-        current_streak: 1,
-        recent: [],
-        unseen_milestone: 30,
-      },
-      isLoading: false,
-      error: null,
-    } as never);
+  it("renders My Words heading, start sticker, shelf, and add-word", () => {
+    mockStats();
 
     render(<Dashboard />);
 
-    expect(screen.getByText(/30 reviews/)).toBeInTheDocument();
+    expect(screen.getByText("My Words")).toBeInTheDocument();
+    expect(screen.getByText("Start!")).toBeInTheDocument();
+    expect(screen.getByText("5 words ready 🎯")).toBeInTheDocument();
+    expect(screen.getByTestId("sticker-shelf")).toBeInTheDocument();
+    expect(screen.getByText("Add a new word")).toBeInTheDocument();
   });
 
-  it("renders recent review tokens", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: {
-        due_today: 1,
-        total_reviews: 5,
-        current_streak: 1,
-        recent: [
-          { token: "ephemeral", interval_days: 1, reviewed_at: "2026-01-01T00:00:00Z" },
-          { token: "serendipity", interval_days: 7, reviewed_at: "2026-01-02T00:00:00Z" },
-        ],
-        unseen_milestone: null,
-      },
-      isLoading: false,
-      error: null,
-    } as never);
+  it("renders done state when nothing is due", () => {
+    mockStats({ due_today: 0 });
 
     render(<Dashboard />);
 
-    expect(screen.getByText("ephemeral")).toBeInTheDocument();
-    expect(screen.getByText("serendipity")).toBeInTheDocument();
+    expect(screen.getByText("All done today! 🎉")).toBeInTheDocument();
+    expect(screen.queryByText("Start!")).not.toBeInTheDocument();
+  });
+
+  it("renders milestone banner with kid copy when unseen_milestone is set", () => {
+    mockStats({ unseen_milestone: 30 });
+
+    render(<Dashboard />);
+
+    expect(screen.getByText("You practiced 30 times! ⭐")).toBeInTheDocument();
+    expect(screen.getByText("You are a star!")).toBeInTheDocument();
+    expect(screen.getByText("Keep going!")).toBeInTheDocument();
   });
 
   it("shows loading skeleton while fetching", () => {
@@ -77,22 +76,28 @@ describe("Dashboard", () => {
       data: undefined,
       isLoading: true,
       error: null,
+      refetch: vi.fn(),
     } as never);
 
     render(<Dashboard />);
 
-    expect(screen.queryByText("Due Today")).not.toBeInTheDocument();
+    expect(screen.queryByText("My Words")).not.toBeInTheDocument();
   });
 
-  it("shows error message on failure", () => {
+  it("shows friendly error card with retry on failure", () => {
+    const refetch = vi.fn();
     vi.mocked(useQuery).mockReturnValue({
       data: undefined,
       isLoading: false,
       error: new Error("fail"),
+      refetch,
     } as never);
 
     render(<Dashboard />);
 
-    expect(screen.getByText("Failed to load dashboard")).toBeInTheDocument();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Your words did not load.");
+    screen.getByText("Try again").click();
+    expect(refetch).toHaveBeenCalled();
   });
 });

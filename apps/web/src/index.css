@@ -110,6 +110,10 @@
   }
   .btn-pop:hover { transform: translateY(-1px); box-shadow: 0 5px 0 rgba(0, 0, 0, 0.20); }
   .btn-pop:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.20); }
+  .btn-pop:focus-visible {
+    outline: 3px solid var(--color-tangerine);
+    outline-offset: 2px;
+  }
 
   .btn-pop--primary { background-color: var(--color-tangerine); color: var(--color-cream-50); }
   .btn-pop--ink { background-color: var(--color-ink); color: var(--color-cream-50); }
@@ -203,5 +207,30 @@
   .perspective-card {
     perspective: 1200px;
     transform-style: preserve-3d;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-flip-in,
+  .animate-pop-in,
+  .animate-rise,
+  .animate-wiggle {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .animate-confetti,
+  .animate-sparkle,
+  .confetti-dot {
+    animation: none !important;
+    opacity: 0 !important;
   }
 }

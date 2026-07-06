@@ -5,35 +5,33 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
 import { Marker } from "@/components/ui/Marker";
-
-interface VocabItem {
-  id: string;
-  token: string;
-  language: string;
-  part_of_speech: string | null;
-  definition: string;
-  example_sentence: string | null;
-}
-
-interface VocabListResponse {
-  items: VocabItem[];
-  page: number;
-  page_size: number;
-  total: number;
-}
+import type { VocabListResponse } from "@/api/vocab";
 
 export function ArchivePage() {
   const [page, setPage] = useState(1);
   const pageSize = 20;
 
-  const { data, isLoading, error } = useQuery<VocabListResponse>({
+  const { data, isLoading, error, refetch } = useQuery<VocabListResponse>({
     queryKey: ["archive", page],
     queryFn: (): Promise<VocabListResponse> =>
       fetchApi<VocabListResponse>(`/api/archive?page=${page}&page_size=${pageSize}`),
   });
 
   if (isLoading) return <ArchiveSkeleton />;
-  if (error) return <div className="p-8 text-berry">Failed to load archive</div>;
+  if (error) {
+    return (
+      <main className="max-w-2xl mx-auto px-4 py-8">
+        <Card className="text-center" tilt="l">
+          <p className="font-medium text-ink-soft">
+            Couldn&apos;t load your words. Try again.
+          </p>
+          <Button variant="ink" className="mt-4" onClick={() => refetch()}>
+            Try again
+          </Button>
+        </Card>
+      </main>
+    );
+  }
   if (!data) return null;
 
   const totalPages = Math.ceil(data.total / pageSize);
@@ -41,12 +39,12 @@ export function ArchivePage() {
   return (
     <main className="max-w-2xl mx-auto px-4 py-8">
       <h1 className="text-5xl font-display font-black tracking-tight text-ink mb-8">
-        <Marker>Archive</Marker>
+        <Marker>All words</Marker>
       </h1>
 
       {data.items.length === 0 ? (
         <Card>
-          <p className="text-ink-mute">No vocabulary items yet.</p>
+          <p className="text-ink-mute">No words yet.</p>
         </Card>
       ) : (
         <>

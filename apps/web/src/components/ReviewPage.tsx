@@ -1,88 +1,95 @@
-import { useEffect, useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { fetchApi } from "@/api/client";
-import { useReviewSession, type Card } from "@/store/reviewSession";
-import { Card as Paper } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { RatingButton } from "@/components/ui/RatingButton";
-import { Washi } from "@/components/ui/Washi";
-import { Chip } from "@/components/ui/Chip";
 import { DoneCard } from "@/components/DoneCard";
-import { useAudioQueue } from "@/components/useAudioQueue";
 import { PronunciationGate } from "@/components/PronunciationGate";
+import { Button } from "@/components/ui/Button";
+import { Card as Paper } from "@/components/ui/Card";
+import { Chip } from "@/components/ui/Chip";
+import { RatingButton, type RatingQuality } from "@/components/ui/RatingButton";
+import { Washi } from "@/components/ui/Washi";
+import { useAudioQueue } from "@/components/useAudioQueue";
+import { hasSeen, markSeen, SEEN_KEYS } from "@/lib/seen";
+import { useReviewSession, type Card } from "@/store/reviewSession";
 
 interface DailyBatch {
   cards: Card[];
 }
 
 export function ReviewPage() {
-  const { data, isLoading, error } = useQuery<DailyBatch>({
+  const { data, isLoading, error, refetch } = useQuery<DailyBatch>({
     queryKey: ["review-batch"],
     queryFn: (): Promise<DailyBatch> => fetchApi<DailyBatch>("/api/review/batch"),
   });
-
-  const { phase, cards, activeIndex, completed, loadCards, reveal, nextCard } =
-    useReviewSession();
-
+  const {
+    phase,
+    cards,
+    activeIndex,
+    sessionCount,
+    completed,
+    loadCards,
+    reveal,
+    allowRating,
+    nextCard,
+    enqueueRating,
+  } = useReviewSession();
   const { audioRef, play, stop } = useAudioQueue();
   const [playing, setPlaying] = useState(false);
-  const [pronunciationDone, setPronunciationDone] = useState(false);
-
-  useEffect(() => {
-    const a = audioRef.current;
-    if (!a) return;
-    const onPlay = () => setPlaying(true);
-    const onEnded = () => setPlaying(false);
-    a.addEventListener("play", onPlay);
-    a.addEventListener("ended", onEnded);
-    return () => {
-      a.removeEventListener("play", onPlay);
-      a.removeEventListener("ended", onEnded);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (data?.cards) {
-      loadCards(data.cards);
-    }
-  }, [data, loadCards]);
-
-  useEffect(() => {
-    if (phase === "revealed") {
-      const c = cards[activeIndex];
-      if (c) {
-        play([c.word_audio_url || "", c.example_audio_url || ""]);
-      }
-    }
-  }, [phase, activeIndex]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleRate = useCallback(
-    (quality: number) => {
-      const c = cards[activeIndex];
-      if (!c) return;
-      const ratingId = crypto.randomUUID();
-      fetchApi("/api/review/ratings", {
-        method: "POST",
-        body: JSON.stringify({
-          ratings: [
-            {
-              rating_id: ratingId,
-              card_id: c.review_id,
-              grade: quality,
-              rated_at: new Date().toISOString(),
-            },
-          ],
-        }),
-      }).catch(() => {});
-      nextCard();
-    },
-    [cards, activeIndex, nextCard],
+  const [showRatingHint, setShowRatingHint] = useState(
+    () => !hasSeen(SEEN_KEYS.rating),
   );
 
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === " " && phase === "showing") {
-        e.preventDefault();
+    const audio = audioRef.current;
+    if (!audio) return;
+    const onPlay = () => setPlaying(true);
+    const onStop = () => setPlaying(false);
+    audio.addEventListener("play", onPlay);
+    audio.addEventListener("pause", onStop);
+    audio.addEventListener("ended", onStop);
+    return () => {
+      audio.removeEventListener("play", onPlay);
+      audio.removeEventListener("pause", onStop);
+      audio.removeEventListener("ended", onStop);
+    };
+  }, [audioRef]);
+
+  useEffect(() => {
+    if (data?.cards) loadCards(data.cards);
+  }, [data, loadCards]);
+
+  useEffect(() => {
+    if (phase !== "gated") return;
+    const card = cards[activeIndex];
+    if (card) play([card.word_audio_url || "", card.example_audio_url || ""]);
+  }, [activeIndex, cards, phase, play]);
+
+  const handleRate = useCallback(
+    (grade: RatingQuality) => {
+      const card = cards[activeIndex];
+      if (!card || phase !== "ratable") return;
+      markSeen(SEEN_KEYS.rating);
+      setShowRatingHint(false);
+      enqueueRating({
+        rating_id: crypto.randomUUID(),
+        card_id: card.review_id,
+        grade,
+        rated_at: new Date().toISOString(),
+      });
+      nextCard();
+    },
+    [activeIndex, cards, enqueueRating, nextCard, phase],
+  );
+
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      if (
+        event.key === " " &&
+        phase === "showing" &&
+        !(event.target instanceof HTMLButtonElement)
+      ) {
+        event.preventDefault();
         reveal();
       }
     };
@@ -91,21 +98,50 @@ export function ReviewPage() {
   }, [phase, reveal]);
 
   if (isLoading) return <ReviewSkeleton />;
-  if (error) return <div className="p-8 text-berry">Failed to load review batch</div>;
+
+  if (error) {
+    return (
+      <main className="mx-auto max-w-2xl px-4 py-8">
+        <Paper
+          role="alert"
+          tilt="l"
+          className="text-center text-ink"
+          washi={<Washi color="berry" className="-top-3 -left-3 tilt-l" />}
+        >
+          <p className="text-lg font-semibold">Your words did not load.</p>
+          <Button variant="berry" className="mt-4" onClick={() => void refetch()}>
+            Try again
+          </Button>
+        </Paper>
+      </main>
+    );
+  }
 
   if (cards.length === 0) {
     if (completed) {
       return (
-        <main className="max-w-2xl mx-auto px-4 py-8">
-          <DoneCard />
+        <main className="mx-auto max-w-2xl px-4 py-8">
+          <DoneCard count={sessionCount} />
         </main>
       );
     }
     return (
-      <main className="max-w-2xl mx-auto px-4 py-8 text-center">
-        <h1 className="text-3xl font-display font-black text-ink mb-4">Review</h1>
-        <Paper size="lg" animate="pop-in">
-          <p className="text-ink-mute text-lg">No cards due for review.</p>
+      <main className="mx-auto max-w-2xl px-4 py-8 text-center">
+        <h1 className="mb-4 font-display text-3xl font-black text-ink">
+          Practice
+        </h1>
+        <Paper size="lg" animate="pop-in" tilt="r">
+          <h2 className="font-display text-3xl font-black text-ink">
+            No words today!
+          </h2>
+          <p className="mt-2 text-lg text-ink-soft">Come back tomorrow.</p>
+          <p className="mt-6 text-ink-soft">Want more? Add a new word!</p>
+          <Link
+            to="/dashboard"
+            className="btn-pop btn-pop--primary mt-3 text-base"
+          >
+            Add a new word
+          </Link>
         </Paper>
       </main>
     );
@@ -114,37 +150,38 @@ export function ReviewPage() {
   const card = cards[activeIndex];
   if (!card) return null;
 
-  const isPromp = phase === "showing";
-  const isRevealed = phase === "revealed";
+  const isPrompt = phase === "showing";
+  const isRevealed = phase === "gated" || phase === "ratable";
+  const isRatable = phase === "ratable";
+  const hasReferenceAudio = Boolean(
+    card.word_audio_url || card.example_audio_url,
+  );
 
   return (
-    <main className="max-w-2xl mx-auto px-4 py-8">
+    <main className="mx-auto max-w-2xl px-4 py-8">
       <audio ref={audioRef} className="hidden" />
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-display font-black text-ink">Review</h1>
-          <Chip dotColor="bg-tangerine">{activeIndex + 1}/{cards.length}</Chip>
+          <h1 className="font-display text-2xl font-black text-ink">Practice</h1>
+          <Chip dotColor="bg-tangerine">
+            {activeIndex + 1} / {cards.length}
+          </Chip>
         </div>
       </div>
 
-      {isPromp && (
-        <Paper
-          size="lg"
-          tilt="l-2"
-          animate="pop-in"
-          washi={<Washi color="honey" className="-top-3 -left-3 tilt-l" />}
-          className="perspective-card min-h-[240px] flex flex-col items-center justify-center text-center"
+      {isPrompt && (
+        <button
+          type="button"
+          aria-label="Show the meaning"
+          onClick={reveal}
+          className="card-paper--lg perspective-card relative min-h-[240px] w-full tilt-l-2 animate-pop-in flex flex-col items-center justify-center text-center focus-visible:ring-4 focus-visible:ring-tangerine/30"
         >
-          <div className="text-4xl font-display font-black text-ink mb-2">
+          <Washi color="honey" className="-top-3 -left-3 tilt-l" />
+          <span className="mb-2 font-display text-4xl font-black text-ink">
             {card.token}
-          </div>
-          <p className="text-sm text-ink-mute font-mono tracking-wider uppercase mb-6">
-            Tap to reveal
-          </p>
-          <Button variant="primary" onClick={reveal}>
-            Show Answer
-          </Button>
-        </Paper>
+          </span>
+          <span className="text-base text-ink-soft">Tap to see!</span>
+        </button>
       )}
 
       {isRevealed && (
@@ -153,69 +190,56 @@ export function ReviewPage() {
           tilt="r"
           animate="flip-in"
           washi={<Washi color="teal" className="-top-3 -right-3 tilt-r" />}
-          className="min-h-[200px] sm:min-h-[240px] flex flex-col items-center justify-center text-center"
+          className="flex min-h-[240px] flex-col items-center justify-center text-center"
         >
-          <div className="text-3xl font-display font-black text-ink mb-2 flex items-center gap-2">
+          <div className="mb-2 flex items-center gap-2 font-display text-3xl font-black text-ink">
             {card.token}
-            {(card.word_audio_url || card.example_audio_url) && (
+            {hasReferenceAudio && (
               <button
+                type="button"
                 onClick={() => {
                   if (playing) stop();
                   else play([card.word_audio_url || "", card.example_audio_url || ""]);
                 }}
-                className="text-sm px-2 py-1 rounded-lg border-2 border-ink hover:bg-cream-100"
-                title={playing ? "Stop" : "Replay"}
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border-2 border-ink text-sm hover:bg-cream-100"
+                aria-label={playing ? "Stop the sound" : "Hear it again"}
               >
                 {playing ? "⏹" : "🔊"}
               </button>
             )}
           </div>
-          <p className="text-lg text-ink-soft mb-4">{card.definition}</p>
+          <p className="mb-4 text-lg text-ink-soft">{card.definition}</p>
           {card.example_sentence && (
-            <div className="border-2 border-dashed border-ink/20 rounded-xl px-4 py-3 mb-6">
-              <p className="text-sm text-ink-mute italic">
-                "{card.example_sentence}"
+            <div className="mb-6 rounded-xl border-2 border-dashed border-ink/20 px-4 py-3">
+              <p className="text-sm italic text-ink-mute">
+                &quot;{card.example_sentence}&quot;
               </p>
             </div>
           )}
 
           <PronunciationGate
+            key={card.review_id}
             vocabItemId={card.vocab_item_id}
-            onDone={() => setPronunciationDone(true)}
+            onDone={allowRating}
           />
 
-          {pronunciationDone && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full">
-            <RatingButton
-              emoji="😢"
-              label="Again"
-              quality={0}
-              color="berry"
-              onClick={() => handleRate(0)}
-            />
-            <RatingButton
-              emoji="🤔"
-              label="Hard"
-              quality={2}
-              color="honey"
-              onClick={() => handleRate(2)}
-            />
-            <RatingButton
-              emoji="😊"
-              label="Good"
-              quality={4}
-              color="teal"
-              onClick={() => handleRate(4)}
-            />
-            <RatingButton
-              emoji="🔥"
-              label="Easy"
-              quality={5}
-              color="sky"
-              onClick={() => handleRate(5)}
-            />
+          <div className="mt-6 min-h-[152px] w-full">
+            {isRatable && (
+              <div className="animate-rise">
+                {showRatingHint && (
+                  <p className="mb-3 text-base text-ink-soft">
+                    How well did you know it? Pick a face!
+                  </p>
+                )}
+                <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-4">
+                  <RatingButton quality={0} onClick={() => handleRate(0)} />
+                  <RatingButton quality={2} onClick={() => handleRate(2)} />
+                  <RatingButton quality={4} onClick={() => handleRate(4)} />
+                  <RatingButton quality={5} onClick={() => handleRate(5)} />
+                </div>
+              </div>
+            )}
           </div>
-          )}
         </Paper>
       )}
     </main>
@@ -224,9 +248,9 @@ export function ReviewPage() {
 
 function ReviewSkeleton() {
   return (
-    <main className="max-w-2xl mx-auto px-4 py-8 animate-pulse">
-      <div className="h-8 bg-cream-200 rounded w-32 mb-6" />
-      <div className="bg-cream-200 rounded-[28px] p-8 min-h-[240px]" />
+    <main className="mx-auto max-w-2xl animate-pulse px-4 py-8">
+      <div className="mb-6 h-8 w-32 rounded bg-cream-200" />
+      <div className="min-h-[240px] rounded-[28px] bg-cream-200 p-8" />
     </main>
   );
 }

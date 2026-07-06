@@ -19,6 +19,7 @@ class VocabRead(BaseModel):
     part_of_speech: str | None = None
     definition: str
     example_sentence: str | None = None
+    word_audio_url: str | None = None
 
 
 class VocabListResponse(BaseModel):

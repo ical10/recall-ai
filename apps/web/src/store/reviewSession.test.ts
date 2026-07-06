@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useReviewSession, type Card } from "@/store/reviewSession";
 
 function makeCard(overrides: Partial<Card> = {}): Card {
@@ -12,85 +12,83 @@ function makeCard(overrides: Partial<Card> = {}): Card {
     interval_days: 1,
     repetitions: 0,
     due_at: "2026-01-01T00:00:00Z",
-    word_audio_url: null,
+    word_audio_url: "word.mp3",
     example_audio_url: null,
     ...overrides,
   };
 }
 
+beforeEach(() => {
+  localStorage.clear();
+  useReviewSession.setState({ outbox: [], flushing: false });
+  useReviewSession.getState().reset();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
 describe("reviewSession store", () => {
-  it("starts in idle phase with empty cards", () => {
-    const store = useReviewSession.getState();
-    expect(store.phase).toBe("idle");
-    expect(store.cards).toEqual([]);
-    expect(store.activeIndex).toBe(0);
-  });
+  it("gates every revealed card before it can be rated", () => {
+    useReviewSession.getState().loadCards([
+      makeCard(),
+      makeCard({ review_id: "r2", token: "next" }),
+    ]);
 
-  it("loadCards transitions idle → showing", () => {
-    const cards = [makeCard({ token: "hello" }), makeCard({ token: "world" })];
-    useReviewSession.getState().loadCards(cards);
-
-    const state = useReviewSession.getState();
-    expect(state.phase).toBe("showing");
-    expect(state.cards).toHaveLength(2);
-    expect(state.activeIndex).toBe(0);
-  });
-
-  it("reveal transitions showing → revealed", () => {
-    useReviewSession.getState().loadCards([makeCard()]);
     useReviewSession.getState().reveal();
-
-    expect(useReviewSession.getState().phase).toBe("revealed");
+    expect(useReviewSession.getState().phase).toBe("gated");
+    useReviewSession.getState().allowRating();
+    useReviewSession.getState().nextCard();
+    expect(useReviewSession.getState().phase).toBe("showing");
+    useReviewSession.getState().reveal();
+    expect(useReviewSession.getState().phase).toBe("gated");
   });
 
-  it("next transitions revealed → showing (next card)", () => {
-    const cards = [makeCard({ token: "a" }), makeCard({ token: "b" })];
-    useReviewSession.getState().loadCards(cards);
+  it("ignores a batch refetch while a session is already in progress", () => {
+    useReviewSession.getState().loadCards([
+      makeCard(),
+      makeCard({ review_id: "r2", token: "next" }),
+    ]);
     useReviewSession.getState().reveal();
+    useReviewSession.getState().allowRating();
     useReviewSession.getState().nextCard();
 
-    const state = useReviewSession.getState();
-    expect(state.phase).toBe("showing");
-    expect(state.activeIndex).toBe(1);
+    expect(useReviewSession.getState().sessionCount).toBe(2);
+    expect(useReviewSession.getState().activeIndex).toBe(1);
+
+    useReviewSession.getState().loadCards([makeCard({ review_id: "r3" })]);
+
+    expect(useReviewSession.getState().sessionCount).toBe(2);
+    expect(useReviewSession.getState().activeIndex).toBe(1);
+    expect(useReviewSession.getState().phase).toBe("showing");
   });
 
-  it("next on last card transitions revealed → idle and sets completed", () => {
-    useReviewSession.getState().loadCards([makeCard()]);
-    useReviewSession.getState().reveal();
-    useReviewSession.getState().nextCard();
+  it("retries the same queued rating id after failure", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ applied: 1, skipped: 0 })));
+    vi.stubGlobal("fetch", fetchMock);
+    const rating = {
+      rating_id: "rating-1",
+      card_id: "r1",
+      grade: 4,
+      rated_at: "2026-07-06T00:00:00Z",
+    };
 
-    const state = useReviewSession.getState();
-    expect(state.phase).toBe("idle");
-    expect(state.cards).toEqual([]);
-    expect(state.completed).toBe(true);
-  });
+    useReviewSession.getState().enqueueRating(rating);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    expect(useReviewSession.getState().outbox).toEqual([rating]);
 
-  it("completed is false on fresh loadCards", () => {
-    useReviewSession.getState().loadCards([makeCard()]);
-    expect(useReviewSession.getState().completed).toBe(false);
-  });
+    await vi.advanceTimersByTimeAsync(250);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
-  it("reveal from idle is rejected (illegal transition)", () => {
-    useReviewSession.setState({ cards: [], phase: "idle" });
-    expect(() => useReviewSession.getState().reveal()).toThrow(
-      "Cannot reveal from idle",
-    );
-  });
-
-  it("next from showing is rejected (must reveal first)", () => {
-    useReviewSession.getState().loadCards([makeCard()]);
-    expect(() => useReviewSession.getState().nextCard()).toThrow(
-      "Cannot advance from showing",
-    );
-  });
-
-  it("reset returns to idle", () => {
-    useReviewSession.getState().loadCards([makeCard()]);
-    useReviewSession.getState().reset();
-
-    const state = useReviewSession.getState();
-    expect(state.phase).toBe("idle");
-    expect(state.cards).toEqual([]);
-    expect(state.activeIndex).toBe(0);
+    const firstBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    const retryBody = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+    expect(firstBody.ratings[0].rating_id).toBe("rating-1");
+    expect(retryBody.ratings[0].rating_id).toBe("rating-1");
+    expect(useReviewSession.getState().outbox).toEqual([]);
   });
 });

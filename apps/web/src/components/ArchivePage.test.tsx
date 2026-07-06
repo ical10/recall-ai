@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { ArchivePage } from "@/components/ArchivePage";
 
 vi.mock("@tanstack/react-query", () => ({
@@ -46,7 +46,7 @@ describe("ArchivePage", () => {
     } as never);
 
     render(<ArchivePage />);
-    expect(screen.getByText("No vocabulary items yet.")).toBeInTheDocument();
+    expect(screen.getByText("No words yet.")).toBeInTheDocument();
   });
 
   it("renders loading skeleton", () => {
@@ -57,17 +57,25 @@ describe("ArchivePage", () => {
     } as never);
 
     render(<ArchivePage />);
-    expect(screen.queryByText("Archive")).not.toBeInTheDocument();
+    expect(screen.queryByText("All words")).not.toBeInTheDocument();
   });
 
-  it("renders error state", () => {
+  it("renders error state with retry", () => {
+    const refetch = vi.fn();
     vi.mocked(useQuery).mockReturnValue({
       data: undefined,
       isLoading: false,
       error: new Error("fail"),
+      refetch,
     } as never);
 
     render(<ArchivePage />);
-    expect(screen.getByText("Failed to load archive")).toBeInTheDocument();
+    expect(
+      screen.getByText("Couldn't load your words. Try again."),
+    ).toBeInTheDocument();
+
+    const button = screen.getByRole("button", { name: "Try again" });
+    fireEvent.click(button);
+    expect(refetch).toHaveBeenCalled();
   });
 });

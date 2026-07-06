@@ -3,24 +3,22 @@ import { describe, expect, it, vi } from "vitest";
 import { RatingButton } from "./RatingButton";
 
 describe("RatingButton", () => {
-  it("renders emoji and label", () => {
-    render(<RatingButton emoji="😢" label="Again" quality={0} color="berry" data-testid="btn" />);
-    const btn = screen.getByTestId("btn");
-    expect(btn.textContent).toContain("😢");
-    expect(btn.textContent).toContain("Again");
+  it.each([
+    [0, "🙈 Oops!", "berry"],
+    [2, "🤔 Tricky!", "honey"],
+    [4, "😊 Got it!", "teal"],
+    [5, "🔥 So easy!", "sky"],
+  ] as const)("renders grade %i with its label and compass color", (quality, label, color) => {
+    render(<RatingButton quality={quality} data-testid="rating" />);
+    const button = screen.getByTestId("rating");
+    expect(button).toHaveAccessibleName(label);
+    expect(button).toHaveClass(`btn-pop--${color}`);
   });
 
-  it("applies btn-pop color variant and flex-col", () => {
-    render(<RatingButton emoji="😊" label="Good" quality={4} color="teal" data-testid="btn" />);
-    const btn = screen.getByTestId("btn");
-    expect(btn.className).toContain("btn-pop--teal");
-    expect(btn.className).toContain("flex-col");
-  });
-
-  it("fires onClick with quality", () => {
-    const fn = vi.fn();
-    render(<RatingButton emoji="🔥" label="Easy" quality={5} color="sky" onClick={fn} data-testid="btn" />);
-    screen.getByTestId("btn").click();
-    expect(fn).toHaveBeenCalledOnce();
+  it("fires onClick", () => {
+    const onClick = vi.fn();
+    render(<RatingButton quality={5} onClick={onClick} />);
+    screen.getByRole("button", { name: "🔥 So easy!" }).click();
+    expect(onClick).toHaveBeenCalledOnce();
   });
 });

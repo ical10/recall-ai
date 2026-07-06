@@ -565,3 +565,83 @@ def test_extension_auth_existing_user_is_not_duplicated(tmp_path: Path) -> None:
             return len(rows)
 
     assert asyncio.run(_count()) == 1
+
+
+def test_callback_seeds_starter_vocab_with_audio_urls(tmp_path: Path) -> None:
+    _setup_env()
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+
+    from app.models.vocab_item import VocabItem
+    from app.services.account import STARTER_VOCAB
+
+    with (
+        patch("app.api.auth._exchange_code", new_callable=AsyncMock) as mock_exchange,
+        patch("secrets.token_urlsafe", return_value=TEST_STATE),
+        TestClient(app) as c,
+    ):
+        mock_exchange.return_value = {
+            "id_token": _fake_id_token("sub-audio", "audio@b.com", "Audio"),
+        }
+        login_resp = c.get("/auth/login", follow_redirects=False)
+        cookies = login_resp.cookies
+        c.get(f"/auth/callback?code=c&state={TEST_STATE}", cookies=cookies)
+
+    async def audio_urls() -> list[str | None]:
+        async with factory() as s:
+            result = await s.execute(select(VocabItem.word_audio_url))
+            return [row[0] for row in result.all()]
+
+    urls = asyncio.run(audio_urls())
+    assert len(urls) == len(STARTER_VOCAB)
+    assert all(url and url.startswith("/audio/starter/") for url in urls)
+
+
+def test_callback_heals_missing_audio_on_returning_user_with_reviews(
+    tmp_path: Path,
+) -> None:
+    _setup_env()
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+
+    from app.models.vocab_item import VocabItem
+    from app.services.account import STARTER_VOCAB
+
+    async def preseed_user_without_audio() -> None:
+        async with factory() as s:
+            user = User(
+                email="noaudio@b.com",
+                google_id="sub-noaudio",
+                name="NoAudio",
+            )
+            s.add(user)
+            await s.flush()
+            for entry in STARTER_VOCAB:
+                item = VocabItem(
+                    token=entry["token"],
+                    language=entry["language"],
+                    definition=entry["definition"],
+                )
+                s.add(item)
+                await s.flush()
+                s.add(Review(user_id=user.id, vocab_item_id=item.id))
+            await s.commit()
+
+    asyncio.run(preseed_user_without_audio())
+
+    with (
+        patch("app.api.auth._exchange_code", new_callable=AsyncMock) as mock_exchange,
+        patch("secrets.token_urlsafe", return_value=TEST_STATE),
+        TestClient(app) as c,
+    ):
+        mock_exchange.return_value = {
+            "id_token": _fake_id_token("sub-noaudio", "noaudio@b.com", "NoAudio"),
+        }
+        login_resp = c.get("/auth/login", follow_redirects=False)
+        cookies = login_resp.cookies
+        c.get(f"/auth/callback?code=c&state={TEST_STATE}", cookies=cookies)
+
+    async def missing_audio_count() -> int:
+        async with factory() as s:
+            result = await s.execute(select(VocabItem).where(VocabItem.word_audio_url.is_(None)))
+            return len(result.all())
+
+    assert asyncio.run(missing_audio_count()) == 0

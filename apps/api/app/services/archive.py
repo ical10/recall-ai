@@ -9,6 +9,13 @@ from app.models.vocab_item import VocabItem
 from app.schemas.vocab import VocabListResponse, VocabRead
 
 
+async def _count_user_vocab(session: AsyncSession, user: User) -> int:
+    total = (
+        await session.execute(select(func.count(Review.id)).where(Review.user_id == user.id))
+    ).scalar_one()
+    return int(total)
+
+
 async def paginate_user_vocab(
     session: AsyncSession,
     user: User,
@@ -16,9 +23,7 @@ async def paginate_user_vocab(
     page: int = 1,
     page_size: int = 20,
 ) -> VocabListResponse:
-    total = (
-        await session.execute(select(func.count(Review.id)).where(Review.user_id == user.id))
-    ).scalar_one()
+    total = await _count_user_vocab(session, user)
 
     rows = (
         (
@@ -39,5 +44,44 @@ async def paginate_user_vocab(
         items=[VocabRead.model_validate(v) for v in rows],
         page=page,
         page_size=page_size,
-        total=int(total),
+        total=total,
+    )
+
+
+async def shelf_vocab(
+    session: AsyncSession,
+    user: User,
+    *,
+    limit: int = 10,
+) -> VocabListResponse:
+    """The kid shelf: challenging and recent words first, hard-capped.
+
+    interval_days ASC surfaces both struggling words (a lapse resets the
+    interval) and just-added ones (interval starts at 0); nulls-first on
+    last_reviewed_at puts never-practiced words ahead of same-interval peers.
+    """
+    total = await _count_user_vocab(session, user)
+
+    rows = (
+        (
+            await session.execute(
+                select(VocabItem)
+                .join(Review, Review.vocab_item_id == VocabItem.id)
+                .where(Review.user_id == user.id)
+                .order_by(
+                    Review.interval_days.asc(),
+                    Review.last_reviewed_at.desc().nulls_first(),
+                )
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    return VocabListResponse(
+        items=[VocabRead.model_validate(v) for v in rows],
+        page=1,
+        page_size=limit,
+        total=total,
     )

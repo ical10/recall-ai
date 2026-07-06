@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { fetchApi } from "@/api/client";
@@ -5,73 +6,56 @@ import type { components } from "@/api/schema";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Marker } from "@/components/ui/Marker";
-import { Eyebrow } from "@/components/ui/Eyebrow";
-import { StatCard } from "@/components/StatCard";
-import { AddWordCard } from "@/components/AddWordCard";
-import { IntervalCard } from "@/components/IntervalCard";
+import { StartSticker } from "@/components/StartSticker";
+import { StickerShelf } from "@/components/StickerShelf";
+import { AddWordCard, type AddWordCardHandle } from "@/components/AddWordCard";
 
 type UserStats = components["schemas"]["UserStats"];
 
 export function Dashboard() {
-  const { data, isLoading, error } = useQuery<UserStats>({
+  const { data, isLoading, error, refetch } = useQuery<UserStats>({
     queryKey: ["dashboard"],
     queryFn: (): Promise<UserStats> => fetchApi<UserStats>("/api/dashboard"),
   });
+  const addWordRef = useRef<AddWordCardHandle>(null);
 
   if (isLoading) return <DashboardSkeleton />;
-  if (error) return <div className="p-8 text-berry">Failed to load dashboard</div>;
+  if (error) {
+    return (
+      <main className="max-w-2xl mx-auto px-4 py-8">
+        <div role="alert" className="tilt-l card-paper--lg text-center">
+          <p className="font-display text-2xl font-black text-ink">
+            Your words did not load.
+          </p>
+          <Button variant="ink" className="mt-5" onClick={() => refetch()}>
+            Try again
+          </Button>
+        </div>
+      </main>
+    );
+  }
   if (!data) return null;
 
   return (
     <main className="max-w-2xl mx-auto px-4 py-8">
       <h1 className="text-5xl font-display font-black tracking-tight text-ink mb-8">
-        <Marker>Dashboard</Marker>
+        <Marker>My Words</Marker>
       </h1>
 
-      <div className="grid grid-cols-3 gap-4 mb-8">
-        <StatCard
-          label="Due Today"
-          value={data.due_today}
-          subtitle="cards to review"
-          icon="clock"
-          tilt="l"
-          delay={0}
-        />
-        <StatCard
-          label="Total Reviews"
-          value={data.total_reviews}
-          subtitle="all time"
-          icon="check"
-          tilt="r"
-          delay={100}
-        />
-        <StatCard
-          label="Streak"
-          value={data.current_streak}
-          subtitle={`day${data.current_streak === 1 ? "" : "s"} running`}
-          icon="flame"
-          tilt="l-2"
-          delay={200}
-        />
-      </div>
+      <StartSticker dueCount={data.due_today} streak={data.current_streak} />
 
       {data.unseen_milestone && (
-        <MilestoneBanner milestone={data.unseen_milestone} />
+        <div className="mt-8">
+          <MilestoneBanner milestone={data.unseen_milestone} />
+        </div>
       )}
 
-      {data.recent.length > 0 && (
-        <section className="mt-8">
-          <Eyebrow className="mb-3 block">Recently Reviewed</Eyebrow>
-          <ul className="space-y-2">
-            {data.recent.map((r, i) => (
-              <IntervalCard key={i} review={r} index={i} />
-            ))}
-          </ul>
-        </section>
-      )}
+      <div className="mt-10">
+        <StickerShelf onEmptyCta={() => addWordRef.current?.expandAndFocus()} />
+      </div>
 
       <div className="mt-8">
-        <AddWordCard />
+        <AddWordCard ref={addWordRef} />
       </div>
     </main>
   );
@@ -83,11 +67,9 @@ function MilestoneBanner({ milestone }: { milestone: number }) {
   return (
     <Card className="bg-honey-light !border-honey text-center" animate="pop-in">
       <p className="font-display text-2xl font-black text-ink">
-        {milestone} reviews!
+        You practiced {milestone} times! ⭐
       </p>
-      <p className="mt-1 text-ink-soft font-medium">
-        Milestone unlocked
-      </p>
+      <p className="mt-1 text-ink-soft font-medium">You are a star!</p>
       <Button
         variant="ink"
         className="mt-4"
@@ -96,7 +78,7 @@ function MilestoneBanner({ milestone }: { milestone: number }) {
           navigate({ to: "/review" });
         }}
       >
-        Open them
+        Keep going!
       </Button>
     </Card>
   );
@@ -106,11 +88,17 @@ function DashboardSkeleton() {
   return (
     <main className="max-w-2xl mx-auto px-4 py-8 animate-pulse">
       <div className="h-12 bg-cream-200 rounded w-48 mb-8" />
-      <div className="grid grid-cols-3 gap-4 mb-8">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="h-32 bg-cream-200 rounded-2xl" />
+      <div className="min-h-[240px] rounded-[28px] bg-cream-200 tilt-r-2 mb-10" />
+      <div className="h-8 bg-cream-200 rounded w-40 mb-4" />
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 mb-8">
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <div
+            key={i}
+            className={`min-h-[120px] rounded-2xl bg-cream-200 ${i % 2 === 0 ? "tilt-l" : "tilt-r"}`}
+          />
         ))}
       </div>
+      <div className="h-24 bg-cream-200 rounded-3xl tilt-l" />
     </main>
   );
 }
