@@ -156,11 +156,17 @@ export function StickerShelf({ onEmptyCta }: { onEmptyCta: () => void }) {
                 )}
               >
                 {isFlipped ? (
-                  <span className="line-clamp-3 text-sm font-medium text-ink-soft">
+                  <span
+                    key="definition"
+                    className="animate-flip-in line-clamp-3 text-sm font-medium text-ink-soft"
+                  >
                     {item.definition || "…"}
                   </span>
                 ) : (
-                  <span className="line-clamp-2 break-words font-display text-xl font-black text-ink">
+                  <span
+                    key="word"
+                    className="animate-flip-in line-clamp-2 break-words font-display text-xl font-black text-ink"
+                  >
                     {item.token}
                   </span>
                 )}
