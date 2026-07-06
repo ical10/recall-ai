@@ -5,22 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
 import { Marker } from "@/components/ui/Marker";
-
-interface VocabItem {
-  id: string;
-  token: string;
-  language: string;
-  part_of_speech: string | null;
-  definition: string;
-  example_sentence: string | null;
-}
-
-interface VocabListResponse {
-  items: VocabItem[];
-  page: number;
-  page_size: number;
-  total: number;
-}
+import type { VocabListResponse } from "@/api/vocab";
 
 export function ArchivePage() {
   const [page, setPage] = useState(1);

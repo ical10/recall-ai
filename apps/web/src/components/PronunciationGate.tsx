@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
+import { RECORDING_SECONDS, useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { hasSeen, markSeen, SEEN_KEYS } from "@/lib/seen";
 
 interface PronunciationVerdict {
@@ -191,6 +191,22 @@ export function PronunciationGate({
     );
   }
 
+  if (recorder.state === "error") {
+    return (
+      <div className="card-paper mt-4" aria-live="polite">
+        <p className="text-ink-soft">We could not use the microphone.</p>
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+          <Button variant="ghost" onClick={recorder.reset}>
+            Try again
+          </Button>
+          <Button variant="ghost" onClick={onDone}>
+            Skip
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   const succeeded = verdict?.said_target && verdict.confidence >= 0.6;
 
   return (
@@ -228,7 +244,7 @@ export function PronunciationGate({
           <progress
             aria-label={`${recorder.remainingSeconds} seconds left`}
             className="h-3 w-full accent-berry"
-            max={4}
+            max={RECORDING_SECONDS}
             value={recorder.remainingSeconds}
           />
           <p className="text-sm text-ink-soft">{recorder.remainingSeconds}s</p>

@@ -85,6 +85,10 @@ export const useReviewSession = create<ReviewSessionState>((set, get) => ({
   flushing: false,
 
   loadCards: (cards) => {
+    // A background refetch of the batch query (e.g. tab focus mid-session)
+    // must not reset progress already in flight — only apply a fresh batch
+    // when no session is active.
+    if (get().phase !== "idle") return;
     set({
       cards,
       activeIndex: 0,

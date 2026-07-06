@@ -8,7 +8,7 @@ export type VoiceRecorderState =
   | "unsupported"
   | "error";
 
-const RECORDING_SECONDS = 4;
+export const RECORDING_SECONDS = 4;
 
 export function useVoiceRecorder() {
   const [state, setState] = useState<VoiceRecorderState>("idle");

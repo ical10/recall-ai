@@ -45,6 +45,25 @@ describe("reviewSession store", () => {
     expect(useReviewSession.getState().phase).toBe("gated");
   });
 
+  it("ignores a batch refetch while a session is already in progress", () => {
+    useReviewSession.getState().loadCards([
+      makeCard(),
+      makeCard({ review_id: "r2", token: "next" }),
+    ]);
+    useReviewSession.getState().reveal();
+    useReviewSession.getState().allowRating();
+    useReviewSession.getState().nextCard();
+
+    expect(useReviewSession.getState().sessionCount).toBe(2);
+    expect(useReviewSession.getState().activeIndex).toBe(1);
+
+    useReviewSession.getState().loadCards([makeCard({ review_id: "r3" })]);
+
+    expect(useReviewSession.getState().sessionCount).toBe(2);
+    expect(useReviewSession.getState().activeIndex).toBe(1);
+    expect(useReviewSession.getState().phase).toBe("showing");
+  });
+
   it("retries the same queued rating id after failure", async () => {
     vi.useFakeTimers();
     const fetchMock = vi

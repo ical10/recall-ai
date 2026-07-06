@@ -6,23 +6,7 @@ import { FlipSticker } from "@/components/ui/FlipSticker";
 import { Washi } from "@/components/ui/Washi";
 import { cn } from "@/components/ui/cn";
 import { SEEN_KEYS, hasSeen, markSeen } from "@/lib/seen";
-
-interface VocabItem {
-  id: string;
-  token: string;
-  language: string;
-  part_of_speech: string | null;
-  definition: string;
-  example_sentence: string | null;
-  word_audio_url: string | null;
-}
-
-interface VocabListResponse {
-  items: VocabItem[];
-  page: number;
-  page_size: number;
-  total: number;
-}
+import type { VocabItem, VocabListResponse } from "@/api/vocab";
 
 const TINT_CLASSES = [
   "bg-tangerine-light",
