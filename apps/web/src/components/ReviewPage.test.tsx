@@ -15,7 +15,6 @@ vi.mock("@/hooks/useVoiceRecorder", () => ({
   useVoiceRecorder: () => ({
     state: "idle",
     blob: null,
-    supported: true,
     remainingSeconds: 4,
     start: vi.fn(),
     stop: vi.fn(),

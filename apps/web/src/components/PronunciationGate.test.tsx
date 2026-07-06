@@ -5,7 +5,6 @@ import { PronunciationGate } from "@/components/PronunciationGate";
 const recorder = vi.hoisted(() => ({
   state: "idle",
   blob: null as Blob | null,
-  supported: true,
   remainingSeconds: 4,
   start: vi.fn(),
   stop: vi.fn(),

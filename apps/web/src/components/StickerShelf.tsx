@@ -69,10 +69,14 @@ export function StickerShelf({ onEmptyCta }: { onEmptyCta: () => void }) {
     }
   };
 
+  const heading = (
+    <h2 className="font-display text-2xl font-black text-ink mb-4">My sticker shelf</h2>
+  );
+
   if (isLoading) {
     return (
       <section>
-        <h2 className="font-display text-2xl font-black text-ink mb-4">My sticker shelf</h2>
+        {heading}
         <div className="grid grid-cols-2 gap-4 animate-pulse sm:grid-cols-3">
           {[0, 1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="h-28 rounded-2xl bg-cream-200" />
@@ -85,7 +89,7 @@ export function StickerShelf({ onEmptyCta }: { onEmptyCta: () => void }) {
   if (error) {
     return (
       <section>
-        <h2 className="font-display text-2xl font-black text-ink mb-4">My sticker shelf</h2>
+        {heading}
         <div role="alert" className="tilt-l card-paper text-center">
           <p className="font-display text-xl font-black text-ink">Your words did not load.</p>
           <Button variant="ink" className="mt-4" onClick={() => refetch()}>
@@ -101,7 +105,7 @@ export function StickerShelf({ onEmptyCta }: { onEmptyCta: () => void }) {
   if (data.items.length === 0) {
     return (
       <section>
-        <h2 className="font-display text-2xl font-black text-ink mb-4">My sticker shelf</h2>
+        {heading}
         <button
           type="button"
           onClick={onEmptyCta}
@@ -168,7 +172,6 @@ export function StickerShelf({ onEmptyCta }: { onEmptyCta: () => void }) {
           );
         })}
       </div>
-
     </section>
   );
 }

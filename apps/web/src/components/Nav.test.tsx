@@ -21,12 +21,16 @@ vi.mock("@tanstack/react-router", () => ({
 
 import { useQuery } from "@tanstack/react-query";
 
+function mockSignedIn() {
+  vi.mocked(useQuery).mockReturnValue({
+    data: { id: "1", email: "a@b.com", name: "Ana", avatar_url: null },
+    isLoading: false,
+  } as never);
+}
+
 describe("Nav", () => {
   it("always shows My Words and Practice when signed in (visible on mobile)", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: { id: "1", email: "a@b.com", name: "Ana", avatar_url: null },
-      isLoading: false,
-    } as never);
+    mockSignedIn();
 
     render(<Nav />);
 
@@ -40,10 +44,7 @@ describe("Nav", () => {
   });
 
   it("shows a quiet Grown-ups link to /grown-ups", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: { id: "1", email: "a@b.com", name: "Ana", avatar_url: null },
-      isLoading: false,
-    } as never);
+    mockSignedIn();
 
     render(<Nav />);
 
@@ -76,10 +77,7 @@ describe("Nav", () => {
         value: { ...originalLocation, assign: assignMock },
       });
 
-      vi.mocked(useQuery).mockReturnValue({
-        data: { id: "1", email: "a@b.com", name: "Ana", avatar_url: null },
-        isLoading: false,
-      } as never);
+      mockSignedIn();
     });
 
     afterEach(() => {

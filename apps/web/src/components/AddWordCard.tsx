@@ -21,20 +21,15 @@ export const AddWordCard = forwardRef<AddWordCardHandle>(function AddWordCard(_p
   const [pending, setPending] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useImperativeHandle(ref, () => ({
-    expandAndFocus: () => {
-      setPhase("form");
-      requestAnimationFrame(() => inputRef.current?.focus());
-    },
-  }));
-
   const expand = () => {
     setPhase("form");
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
-  const backToForm = (clearToken: boolean) => {
-    if (clearToken) setToken("");
+  useImperativeHandle(ref, () => ({ expandAndFocus: expand }));
+
+  const backToForm = () => {
+    setToken("");
     setPhase("form");
     requestAnimationFrame(() => inputRef.current?.focus());
   };
@@ -97,7 +92,7 @@ export const AddWordCard = forwardRef<AddWordCardHandle>(function AddWordCard(_p
           <Link to="/review" className="btn-pop btn-pop--ink text-sm">
             Practice now
           </Link>
-          <Button variant="ghost" onClick={() => backToForm(true)} className="text-sm">
+          <Button variant="ghost" onClick={backToForm} className="text-sm">
             Add another word
           </Button>
         </div>
@@ -120,7 +115,7 @@ export const AddWordCard = forwardRef<AddWordCardHandle>(function AddWordCard(_p
           </div>
         </div>
         <div className="mt-5">
-          <Button variant="ghost" onClick={() => backToForm(true)} className="text-sm">
+          <Button variant="ghost" onClick={backToForm} className="text-sm">
             Try another word
           </Button>
         </div>

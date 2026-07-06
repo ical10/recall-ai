@@ -16,6 +16,15 @@ const items = [
 
 const playSpy = vi.fn().mockResolvedValue(undefined);
 
+function mockShelf(data: { items: typeof items; total: number }) {
+  vi.mocked(useQuery).mockReturnValue({
+    data: { page: 1, page_size: 60, ...data },
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  } as never);
+}
+
 beforeEach(() => {
   localStorage.clear();
   playSpy.mockClear();
@@ -25,12 +34,7 @@ beforeEach(() => {
 
 describe("StickerShelf", () => {
   it("renders the shelf heading", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: { items, page: 1, page_size: 60, total: 2 },
-      isLoading: false,
-      error: null,
-      refetch: vi.fn(),
-    } as never);
+    mockShelf({ items, total: 2 });
 
     render(<StickerShelf onEmptyCta={vi.fn()} />);
 
@@ -38,12 +42,7 @@ describe("StickerShelf", () => {
   });
 
   it("flips a sticker to show its definition via click", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: { items, page: 1, page_size: 60, total: 2 },
-      isLoading: false,
-      error: null,
-      refetch: vi.fn(),
-    } as never);
+    mockShelf({ items, total: 2 });
 
     render(<StickerShelf onEmptyCta={vi.fn()} />);
 
@@ -58,12 +57,7 @@ describe("StickerShelf", () => {
   });
 
   it("flips a sticker to show its definition via keyboard", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: { items, page: 1, page_size: 60, total: 2 },
-      isLoading: false,
-      error: null,
-      refetch: vi.fn(),
-    } as never);
+    mockShelf({ items, total: 2 });
 
     render(<StickerShelf onEmptyCta={vi.fn()} />);
 
@@ -75,12 +69,7 @@ describe("StickerShelf", () => {
   });
 
   it("renders the defensive empty state and invokes onEmptyCta when pressed", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: { items: [], page: 1, page_size: 60, total: 0 },
-      isLoading: false,
-      error: null,
-      refetch: vi.fn(),
-    } as never);
+    mockShelf({ items: [], total: 0 });
 
     const onEmptyCta = vi.fn();
     render(<StickerShelf onEmptyCta={onEmptyCta} />);
@@ -91,12 +80,7 @@ describe("StickerShelf", () => {
   });
 
   it("shows the first-flip hint until dismissed, and sets the seen-key on dismissal", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: { items, page: 1, page_size: 60, total: 2 },
-      isLoading: false,
-      error: null,
-      refetch: vi.fn(),
-    } as never);
+    mockShelf({ items, total: 2 });
 
     render(<StickerShelf onEmptyCta={vi.fn()} />);
 
@@ -110,12 +94,7 @@ describe("StickerShelf", () => {
   });
 
   it("plays the word audio when flipping a sticker that has it", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: { items, page: 1, page_size: 60, total: 2 },
-      isLoading: false,
-      error: null,
-      refetch: vi.fn(),
-    } as never);
+    mockShelf({ items, total: 2 });
 
     render(<StickerShelf onEmptyCta={vi.fn()} />);
 
@@ -127,12 +106,7 @@ describe("StickerShelf", () => {
   });
 
   it("shows a replay button only when flipped with audio", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: { items, page: 1, page_size: 60, total: 2 },
-      isLoading: false,
-      error: null,
-      refetch: vi.fn(),
-    } as never);
+    mockShelf({ items, total: 2 });
 
     render(<StickerShelf onEmptyCta={vi.fn()} />);
 
@@ -148,12 +122,7 @@ describe("StickerShelf", () => {
   });
 
   it("dismisses the hint on first flip too", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: { items, page: 1, page_size: 60, total: 2 },
-      isLoading: false,
-      error: null,
-      refetch: vi.fn(),
-    } as never);
+    mockShelf({ items, total: 2 });
 
     render(<StickerShelf onEmptyCta={vi.fn()} />);
 

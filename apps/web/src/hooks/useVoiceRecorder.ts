@@ -104,7 +104,6 @@ export function useVoiceRecorder() {
   return {
     state,
     blob,
-    supported: state !== "unsupported",
     remainingSeconds,
     start,
     stop,

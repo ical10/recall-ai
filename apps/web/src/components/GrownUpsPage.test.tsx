@@ -21,19 +21,24 @@ vi.mock("@tanstack/react-router", () => ({
 
 import { useQuery } from "@tanstack/react-query";
 
+function mockStats(overrides: Record<string, unknown> = {}) {
+  vi.mocked(useQuery).mockReturnValue({
+    data: {
+      due_today: 0,
+      total_reviews: 0,
+      current_streak: 0,
+      recent: [],
+      unseen_milestone: null,
+      ...overrides,
+    },
+    isLoading: false,
+    error: null,
+  } as never);
+}
+
 describe("GrownUpsPage", () => {
   it("renders the stats trio", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: {
-        due_today: 5,
-        total_reviews: 42,
-        current_streak: 3,
-        recent: [],
-        unseen_milestone: null,
-      },
-      isLoading: false,
-      error: null,
-    } as never);
+    mockStats({ due_today: 5, total_reviews: 42, current_streak: 3 });
 
     render(<GrownUpsPage />);
 
@@ -48,21 +53,16 @@ describe("GrownUpsPage", () => {
   });
 
   it("renders review history with local-timezone timestamps and G8 phrasing", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: {
-        due_today: 1,
-        total_reviews: 5,
-        current_streak: 1,
-        recent: [
-          { token: "rainbow", interval_days: 0, reviewed_at: "2026-01-01T00:00:00Z" },
-          { token: "story", interval_days: 1, reviewed_at: "2026-01-02T00:00:00Z" },
-          { token: "family", interval_days: 5, reviewed_at: "2026-01-03T00:00:00Z" },
-        ],
-        unseen_milestone: null,
-      },
-      isLoading: false,
-      error: null,
-    } as never);
+    mockStats({
+      due_today: 1,
+      total_reviews: 5,
+      current_streak: 1,
+      recent: [
+        { token: "rainbow", interval_days: 0, reviewed_at: "2026-01-01T00:00:00Z" },
+        { token: "story", interval_days: 1, reviewed_at: "2026-01-02T00:00:00Z" },
+        { token: "family", interval_days: 5, reviewed_at: "2026-01-03T00:00:00Z" },
+      ],
+    });
 
     render(<GrownUpsPage />);
 
@@ -80,34 +80,14 @@ describe("GrownUpsPage", () => {
   });
 
   it("renders empty history state", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: {
-        due_today: 0,
-        total_reviews: 0,
-        current_streak: 0,
-        recent: [],
-        unseen_milestone: null,
-      },
-      isLoading: false,
-      error: null,
-    } as never);
+    mockStats();
 
     render(<GrownUpsPage />);
     expect(screen.getByText("No reviews yet.")).toBeInTheDocument();
   });
 
   it("renders the archive link and mic-fix helper text", () => {
-    vi.mocked(useQuery).mockReturnValue({
-      data: {
-        due_today: 0,
-        total_reviews: 0,
-        current_streak: 0,
-        recent: [],
-        unseen_milestone: null,
-      },
-      isLoading: false,
-      error: null,
-    } as never);
+    mockStats();
 
     render(<GrownUpsPage />);
 
