@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchApi } from "@/api/client";
 import { Button } from "@/components/ui/Button";
+import { FlipSticker } from "@/components/ui/FlipSticker";
 import { Washi } from "@/components/ui/Washi";
 import { cn } from "@/components/ui/cn";
 import { SEEN_KEYS, hasSeen, markSeen } from "@/lib/seen";
@@ -144,33 +145,15 @@ export function StickerShelf({ onEmptyCta }: { onEmptyCta: () => void }) {
 
           return (
             <div key={item.id} className={cn("relative", tilt)}>
-              <button
-                type="button"
-                onClick={() => toggleFlip(item)}
+              <FlipSticker
+                word={item.token}
+                definition={item.definition}
+                flipped={isFlipped}
+                tintClass={tint}
+                ariaLabel={`Show what ${item.token} means`}
+                onToggle={() => toggleFlip(item)}
                 onKeyDown={handleKeyDown(item)}
-                aria-label={`Show what ${item.token} means`}
-                aria-expanded={isFlipped}
-                className={cn(
-                  "flex min-h-[120px] w-full flex-col items-center justify-center gap-1 rounded-2xl border-2 border-ink p-4 text-center shadow-pop transition-transform hover:-translate-y-0.5",
-                  tint,
-                )}
-              >
-                {isFlipped ? (
-                  <span
-                    key="definition"
-                    className="animate-flip-in line-clamp-3 text-sm font-medium text-ink-soft"
-                  >
-                    {item.definition || "…"}
-                  </span>
-                ) : (
-                  <span
-                    key="word"
-                    className="animate-flip-in line-clamp-2 break-words font-display text-xl font-black text-ink"
-                  >
-                    {item.token}
-                  </span>
-                )}
-              </button>
+              />
               {isFlipped && item.word_audio_url && (
                 <button
                   type="button"
