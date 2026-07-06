@@ -37,11 +37,18 @@ export function FlipSticker({
         aria-expanded={flipped}
         whileTap={{ scale: 0.97 }}
         whileHover={{ y: -2 }}
-        animate={{ rotateY: flipped ? 180 : 0 }}
+        animate={
+          shouldReduceMotion
+            ? { rotateY: flipped ? 180 : 0 }
+            : { rotateY: flipped ? 180 : 0, scale: [null, 1.12, 1] }
+        }
         transition={
           shouldReduceMotion
             ? { duration: 0 }
-            : { type: "spring", stiffness: 260, damping: 20 }
+            : {
+                rotateY: { type: "spring", stiffness: 220, damping: 18 },
+                scale: { duration: 0.45, times: [0, 0.5, 1], ease: "easeOut" },
+              }
         }
         className="relative min-h-[120px] w-full [transform-style:preserve-3d] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-tangerine/30"
       >
