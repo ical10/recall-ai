@@ -179,3 +179,62 @@ def test_archive_includes_word_audio_url(tmp_path: Path) -> None:
     by_token = {item["token"]: item for item in resp.json()["items"]}
     assert by_token["friend"]["word_audio_url"] == "/audio/starter/friend.mp3"
     assert by_token["silent"]["word_audio_url"] is None
+
+
+def test_shelf_prioritizes_challenging_and_recent_capped_at_ten(tmp_path: Path) -> None:
+    app, factory = _make_app(str(tmp_path / "db.sqlite"))
+    user = asyncio.run(_insert_user(factory))
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    async def setup() -> None:
+        async with factory() as s:
+            now = datetime.now(UTC)
+            for i in range(12):
+                vi = VocabItem(token=f"easy{i}", language="en", definition="comfortable")
+                s.add(vi)
+                await s.flush()
+                s.add(
+                    Review(
+                        user_id=user.id,
+                        vocab_item_id=vi.id,
+                        due_at=now,
+                        interval_days=30,
+                        last_reviewed_at=now,
+                    )
+                )
+            hard = VocabItem(token="tricky", language="en", definition="a struggle")
+            s.add(hard)
+            await s.flush()
+            s.add(
+                Review(
+                    user_id=user.id,
+                    vocab_item_id=hard.id,
+                    due_at=now,
+                    interval_days=1,
+                    last_reviewed_at=now,
+                )
+            )
+            fresh = VocabItem(token="brandnew", language="en", definition="just added")
+            s.add(fresh)
+            await s.flush()
+            s.add(
+                Review(
+                    user_id=user.id,
+                    vocab_item_id=fresh.id,
+                    due_at=now,
+                    interval_days=0,
+                    last_reviewed_at=None,
+                )
+            )
+            await s.commit()
+
+    asyncio.run(setup())
+    with TestClient(app) as c:
+        resp = c.get("/api/shelf")
+    assert resp.status_code == 200
+    data = resp.json()
+    tokens = [item["token"] for item in data["items"]]
+    assert len(tokens) == 10
+    assert tokens[0] == "brandnew"
+    assert tokens[1] == "tricky"
+    assert data["total"] == 14

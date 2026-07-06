@@ -2,7 +2,7 @@ from fastapi import APIRouter, Query
 
 from app.api.deps import SessionDep, UserDep
 from app.schemas.vocab import VocabListResponse
-from app.services.archive import paginate_user_vocab
+from app.services.archive import paginate_user_vocab, shelf_vocab
 
 router = APIRouter()
 
@@ -15,3 +15,8 @@ async def api_list_archive(
     page_size: int = Query(20, ge=1, le=100),
 ) -> VocabListResponse:
     return await paginate_user_vocab(session, user, page=page, page_size=page_size)
+
+
+@router.get("/shelf", response_model=VocabListResponse)
+async def api_shelf(session: SessionDep, user: UserDep) -> VocabListResponse:
+    return await shelf_vocab(session, user)

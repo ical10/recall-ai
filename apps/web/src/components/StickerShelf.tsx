@@ -31,11 +31,7 @@ const TINT_CLASSES = [
   "bg-sky-light",
 ];
 
-const MAX_PAGE_SIZE = 100;
-const PAGE_STEP = 60;
-
 export function StickerShelf({ onEmptyCta }: { onEmptyCta: () => void }) {
-  const [visibleCount, setVisibleCount] = useState(PAGE_STEP);
   const [flipped, setFlipped] = useState<Record<string, boolean>>({});
   const [hintVisible, setHintVisible] = useState(() => !hasSeen(SEEN_KEYS.flip));
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -48,11 +44,9 @@ export function StickerShelf({ onEmptyCta }: { onEmptyCta: () => void }) {
     void audio.play().catch(() => {});
   };
 
-  const pageSize = Math.min(visibleCount, MAX_PAGE_SIZE);
   const { data, isLoading, error, refetch } = useQuery<VocabListResponse>({
-    queryKey: ["sticker-shelf", pageSize],
-    queryFn: (): Promise<VocabListResponse> =>
-      fetchApi<VocabListResponse>(`/api/archive?page=1&page_size=${pageSize}`),
+    queryKey: ["sticker-shelf"],
+    queryFn: (): Promise<VocabListResponse> => fetchApi<VocabListResponse>("/api/shelf"),
   });
 
   const dismissHint = () => {
@@ -120,8 +114,6 @@ export function StickerShelf({ onEmptyCta }: { onEmptyCta: () => void }) {
     );
   }
 
-  const canShowMore = data.total > data.items.length && pageSize < MAX_PAGE_SIZE;
-
   return (
     <section>
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -188,16 +180,6 @@ export function StickerShelf({ onEmptyCta }: { onEmptyCta: () => void }) {
         })}
       </div>
 
-      {canShowMore && (
-        <div className="mt-6 text-center">
-          <Button
-            variant="ghost"
-            onClick={() => setVisibleCount((v) => Math.min(v + PAGE_STEP, MAX_PAGE_SIZE))}
-          >
-            Show more
-          </Button>
-        </div>
-      )}
     </section>
   );
 }
