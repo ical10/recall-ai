@@ -1,11 +1,10 @@
 import type { ReactNode } from "react";
-import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { Nav } from "@/components/Nav";
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: vi.fn(),
-  useQueryClient: vi.fn(() => ({ clear: vi.fn() })),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -18,7 +17,6 @@ vi.mock("@tanstack/react-router", () => ({
       {children}
     </a>
   ),
-  useNavigate: () => vi.fn(),
 }));
 
 import { useQuery } from "@tanstack/react-query";
@@ -64,5 +62,57 @@ describe("Nav", () => {
     expect(screen.queryByRole("link", { name: "My Words" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Practice" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Grown-ups" })).not.toBeInTheDocument();
+  });
+
+  describe("sign out", () => {
+    const originalLocation = window.location;
+    let assignMock: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      assignMock = vi.fn();
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        writable: true,
+        value: { ...originalLocation, assign: assignMock },
+      });
+
+      vi.mocked(useQuery).mockReturnValue({
+        data: { id: "1", email: "a@b.com", name: "Ana", avatar_url: null },
+        isLoading: false,
+      } as never);
+    });
+
+    afterEach(() => {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        writable: true,
+        value: originalLocation,
+      });
+      vi.unstubAllGlobals();
+    });
+
+    it("POSTs to /api/auth/logout and redirects to /login", async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+      vi.stubGlobal("fetch", fetchMock);
+
+      render(<Nav />);
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+      await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/login"));
+      expect(fetchMock).toHaveBeenCalledWith("/api/auth/logout", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+    });
+
+    it("still redirects to /login when the logout request rejects", async () => {
+      const fetchMock = vi.fn().mockRejectedValue(new Error("network error"));
+      vi.stubGlobal("fetch", fetchMock);
+
+      render(<Nav />);
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+      await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/login"));
+    });
   });
 });

@@ -1,5 +1,5 @@
-import { Link, useNavigate } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { fetchApi } from "@/api/client";
 import { Button } from "@/components/ui/Button";
 
@@ -11,8 +11,6 @@ interface MeResponse {
 }
 
 export function Nav() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { data: user, isLoading } = useQuery<MeResponse | null>({
     queryKey: ["me"],
     queryFn: async () => {
@@ -27,9 +25,13 @@ export function Nav() {
   });
 
   const handleLogout = async () => {
-    await fetchApi("/api/auth/logout", { method: "POST" });
-    queryClient.clear();
-    navigate({ to: "/login" });
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+    } catch {
+      // ignore — always redirect below regardless of network/auth failure
+    } finally {
+      window.location.assign("/login");
+    }
   };
 
   return (
