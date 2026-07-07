@@ -5,7 +5,7 @@ import pytest
 from app.jobs import content_gen, nightly
 
 
-def test_run_awaits_the_three_steps_in_order(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_awaits_the_steps_in_order(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, int]] = []
 
     async def fake_shared_pool(count: int) -> dict[str, int]:
@@ -20,9 +20,14 @@ def test_run_awaits_the_three_steps_in_order(monkeypatch: pytest.MonkeyPatch) ->
         calls.append(("generate_personalized_for_all", count))
         return {"total_vocab_created": 0, "users_processed": 0}
 
+    async def fake_backfill_audio(batch_size: int) -> dict[str, int]:
+        calls.append(("backfill_audio", batch_size))
+        return {"rendered": 0, "skipped": 0}
+
     monkeypatch.setattr(content_gen, "generate_shared_pool", fake_shared_pool)
     monkeypatch.setattr(content_gen, "run_daily", fake_run_daily)
     monkeypatch.setattr(content_gen, "generate_personalized_for_all", fake_personalized_for_all)
+    monkeypatch.setattr(content_gen, "backfill_audio", fake_backfill_audio)
 
     asyncio.run(nightly.run())
 
@@ -30,6 +35,7 @@ def test_run_awaits_the_three_steps_in_order(monkeypatch: pytest.MonkeyPatch) ->
         ("generate_shared_pool", 10),
         ("run_daily", 25),
         ("generate_personalized_for_all", 5),
+        ("backfill_audio", 50),
     ]
 
 

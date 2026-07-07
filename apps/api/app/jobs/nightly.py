@@ -16,6 +16,8 @@ async def run() -> None:
     logger.info("nightly_enrichment_done", extra={"result": daily})
     personalized = await content_gen.generate_personalized_for_all(count=5)
     logger.info("nightly_personalized_done", extra={"result": personalized})
+    audio = await content_gen.backfill_audio(batch_size=50)
+    logger.info("nightly_audio_backfill_done", extra={"result": audio})
 
 
 def should_run() -> bool:
