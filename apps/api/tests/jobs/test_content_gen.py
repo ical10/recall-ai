@@ -8,18 +8,18 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.jobs.content_gen import (
+    _generate_personalized_batch,
+    generate_personalized_for_all,
+    generate_shared_pool,
+    run_daily,
+)
 from app.models.base import Base
 from app.models.review import Review
 from app.models.user import User
 from app.models.vocab_item import VocabItem
 from app.schemas.llm import GeneratedVocabBatch, SimpleVocabExample
 from app.services.llm import LLMValidationFailure
-from app.workers.content_gen import (
-    _generate_personalized_batch,
-    _generate_personalized_for_all,
-    _generate_shared_pool,
-    _run_daily,
-)
 
 
 @pytest.fixture()
@@ -75,14 +75,14 @@ def test_run_daily_persists_definition_and_example_to_vocab_item(
     asyncio.run(_seed())
 
     with (
-        patch("app.workers.content_gen.SessionLocal", session_factory),
-        patch("app.workers.content_gen.LLMClient") as mock_cls,
+        patch("app.jobs.content_gen.SessionLocal", session_factory),
+        patch("app.jobs.content_gen.LLMClient") as mock_cls,
     ):
         mock_llm = mock_cls.return_value
         mock_llm.complete.side_effect = lambda prompt, schema: _canned_result(
             "word1" if "word1" in prompt else "word2"
         )
-        result = asyncio.run(_run_daily(batch_size=2))
+        result = asyncio.run(run_daily(batch_size=2))
 
     assert result == {"succeeded": 2, "failed": 0}
 
@@ -113,10 +113,10 @@ def test_run_daily_returns_zero_counts_when_no_unenriched(
     asyncio.run(_seed())
 
     with (
-        patch("app.workers.content_gen.SessionLocal", session_factory),
-        patch("app.workers.content_gen.LLMClient") as mock_cls,
+        patch("app.jobs.content_gen.SessionLocal", session_factory),
+        patch("app.jobs.content_gen.LLMClient") as mock_cls,
     ):
-        result = asyncio.run(_run_daily(batch_size=25))
+        result = asyncio.run(run_daily(batch_size=25))
         mock_cls.assert_not_called()
 
     assert result == {"succeeded": 0, "failed": 0}
@@ -143,11 +143,11 @@ def test_run_daily_skips_failed_items_and_continues_batch(
         return _canned_result(token)
 
     with (
-        patch("app.workers.content_gen.SessionLocal", session_factory),
-        patch("app.workers.content_gen.LLMClient") as mock_cls,
+        patch("app.jobs.content_gen.SessionLocal", session_factory),
+        patch("app.jobs.content_gen.LLMClient") as mock_cls,
     ):
         mock_cls.return_value.complete.side_effect = side_effect
-        result = asyncio.run(_run_daily(batch_size=3))
+        result = asyncio.run(run_daily(batch_size=3))
 
     assert result == {"succeeded": 2, "failed": 1}
 
@@ -163,13 +163,13 @@ def test_run_daily_respects_batch_size(
     asyncio.run(_seed())
 
     with (
-        patch("app.workers.content_gen.SessionLocal", session_factory),
-        patch("app.workers.content_gen.LLMClient") as mock_cls,
+        patch("app.jobs.content_gen.SessionLocal", session_factory),
+        patch("app.jobs.content_gen.LLMClient") as mock_cls,
     ):
         mock_cls.return_value.complete.side_effect = lambda prompt, schema: _canned_result(
             next(t for t in [f"word{i}" for i in range(10)] if t in prompt)
         )
-        result = asyncio.run(_run_daily(batch_size=3))
+        result = asyncio.run(run_daily(batch_size=3))
 
     assert mock_cls.return_value.complete.call_count == 3
     assert result["succeeded"] == 3
@@ -186,13 +186,13 @@ def test_run_daily_increments_attempts_on_failure(
     asyncio.run(_seed())
 
     with (
-        patch("app.workers.content_gen.SessionLocal", session_factory),
-        patch("app.workers.content_gen.LLMClient") as mock_cls,
+        patch("app.jobs.content_gen.SessionLocal", session_factory),
+        patch("app.jobs.content_gen.LLMClient") as mock_cls,
     ):
         mock_cls.return_value.complete.side_effect = LLMValidationFailure(
             "fail", attempts=3, last_error=None
         )
-        asyncio.run(_run_daily(batch_size=1))
+        asyncio.run(run_daily(batch_size=1))
 
     async def _check() -> None:
         async with session_factory() as s:
@@ -216,11 +216,11 @@ def test_run_daily_resets_attempts_on_success(
     asyncio.run(_seed())
 
     with (
-        patch("app.workers.content_gen.SessionLocal", session_factory),
-        patch("app.workers.content_gen.LLMClient") as mock_cls,
+        patch("app.jobs.content_gen.SessionLocal", session_factory),
+        patch("app.jobs.content_gen.LLMClient") as mock_cls,
     ):
         mock_cls.return_value.complete.return_value = _canned_result("recover")
-        asyncio.run(_run_daily(batch_size=1))
+        asyncio.run(run_daily(batch_size=1))
 
     async def _check() -> None:
         async with session_factory() as s:
@@ -250,14 +250,14 @@ def test_run_daily_logs_content_gen_item_failed_on_failure(
     asyncio.run(_seed())
 
     with (
-        patch("app.workers.content_gen.SessionLocal", session_factory),
-        patch("app.workers.content_gen.LLMClient") as mock_cls,
-        caplog.at_level(logging.WARNING, logger="app.workers.content_gen"),
+        patch("app.jobs.content_gen.SessionLocal", session_factory),
+        patch("app.jobs.content_gen.LLMClient") as mock_cls,
+        caplog.at_level(logging.WARNING, logger="app.jobs.content_gen"),
     ):
         mock_cls.return_value.complete.side_effect = LLMValidationFailure(
             "fail", attempts=3, last_error=None
         )
-        asyncio.run(_run_daily(batch_size=1))
+        asyncio.run(run_daily(batch_size=1))
 
     failed_records = [r for r in caplog.records if r.message == "content_gen_item_failed"]
     assert len(failed_records) == 1
@@ -310,10 +310,10 @@ def test_generate_shared_pool_skips_when_already_ran_today(
     asyncio.run(_seed())
 
     with (
-        patch("app.workers.content_gen.SessionLocal", session_factory),
-        patch("app.workers.content_gen.LLMClient") as mock_cls,
+        patch("app.jobs.content_gen.SessionLocal", session_factory),
+        patch("app.jobs.content_gen.LLMClient") as mock_cls,
     ):
-        result = asyncio.run(_generate_shared_pool(count=10))
+        result = asyncio.run(generate_shared_pool(count=10))
         mock_cls.assert_not_called()
 
     assert result == {"skipped": "already_ran_today"}
@@ -323,15 +323,15 @@ def test_generate_shared_pool_returns_graceful_failure_on_validation_exhausted(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     with (
-        patch("app.workers.content_gen.SessionLocal", session_factory),
-        patch("app.workers.content_gen.LLMClient") as mock_cls,
+        patch("app.jobs.content_gen.SessionLocal", session_factory),
+        patch("app.jobs.content_gen.LLMClient") as mock_cls,
     ):
         mock_cls.return_value.complete.side_effect = LLMValidationFailure(
             "fail", attempts=3, last_error=None
         )
         # Must NOT raise; the task body catches and returns a graceful dict so
         # Celery does not retry on a deterministically broken prompt.
-        result = asyncio.run(_generate_shared_pool(count=2))
+        result = asyncio.run(generate_shared_pool(count=2))
 
     assert result == {"succeeded": 0, "failed": 1, "reason": "validation_exhausted"}
 
@@ -348,11 +348,11 @@ def test_generate_shared_pool_inserts_vocab_and_enrolls_all_users(
     asyncio.run(_seed())
 
     with (
-        patch("app.workers.content_gen.SessionLocal", session_factory),
-        patch("app.workers.content_gen.LLMClient") as mock_cls,
+        patch("app.jobs.content_gen.SessionLocal", session_factory),
+        patch("app.jobs.content_gen.LLMClient") as mock_cls,
     ):
         mock_cls.return_value.complete.return_value = _batch(["apple", "banana", "cherry"])
-        result = asyncio.run(_generate_shared_pool(count=3))
+        result = asyncio.run(generate_shared_pool(count=3))
 
     assert result["vocab_created"] == 3
     assert result["reviews_created"] == 6
@@ -416,15 +416,15 @@ def test_generate_personalized_for_all_creates_vocab_for_each_active_user(
     asyncio.run(_seed())
 
     with (
-        patch("app.workers.content_gen.SessionLocal", session_factory),
-        patch("app.workers.content_gen.LLMClient") as mock_cls,
+        patch("app.jobs.content_gen.SessionLocal", session_factory),
+        patch("app.jobs.content_gen.LLMClient") as mock_cls,
     ):
         mock_instance = mock_cls.return_value
         mock_instance.complete.side_effect = [
             _batch(["pizza", "pasta"]),
             _batch(["elephant", "giraffe"]),
         ]
-        result = asyncio.run(_generate_personalized_for_all(count=2))
+        result = asyncio.run(generate_personalized_for_all(count=2))
 
     assert result["total_vocab_created"] == 4
     assert result["users_processed"] == 2
@@ -472,11 +472,11 @@ def test_generate_personalized_for_all_skips_inactive_users(
     assert active_id is not None
 
     with (
-        patch("app.workers.content_gen.SessionLocal", session_factory),
-        patch("app.workers.content_gen.LLMClient") as mock_cls,
+        patch("app.jobs.content_gen.SessionLocal", session_factory),
+        patch("app.jobs.content_gen.LLMClient") as mock_cls,
     ):
         mock_cls.return_value.complete.return_value = _batch(["apple", "banana"])
-        result = asyncio.run(_generate_personalized_for_all(count=2))
+        result = asyncio.run(generate_personalized_for_all(count=2))
 
     assert result == {"total_vocab_created": 2, "users_processed": 1}
 
@@ -511,13 +511,13 @@ def test_generate_personalized_for_all_handles_validation_exhausted(
     asyncio.run(_seed())
 
     with (
-        patch("app.workers.content_gen.SessionLocal", session_factory),
-        patch("app.workers.content_gen.LLMClient") as mock_cls,
+        patch("app.jobs.content_gen.SessionLocal", session_factory),
+        patch("app.jobs.content_gen.LLMClient") as mock_cls,
     ):
         mock_cls.return_value.complete.side_effect = LLMValidationFailure(
             "fail", attempts=3, last_error=None
         )
-        result = asyncio.run(_generate_personalized_for_all(count=2))
+        result = asyncio.run(generate_personalized_for_all(count=2))
 
     assert result == {"total_vocab_created": 0, "users_processed": 0}
 
@@ -551,7 +551,7 @@ def test_generate_personalized_batch_caps_exclusions_with_user_tokens_first(
                 )
             await s.commit()
 
-            with patch("app.workers.content_gen.generate_vocab_batch") as mock_gen:
+            with patch("app.jobs.content_gen.generate_vocab_batch") as mock_gen:
                 mock_gen.return_value = _batch(["apple"])
                 await _generate_personalized_batch(s, user, 5, MagicMock())
             exclude: list[str] = mock_gen.call_args.kwargs["exclude_tokens"]
@@ -595,10 +595,10 @@ def test_generate_personalized_for_all_skips_on_same_day_idempotency(
     asyncio.run(_seed())
 
     with (
-        patch("app.workers.content_gen.SessionLocal", session_factory),
-        patch("app.workers.content_gen.LLMClient") as mock_cls,
+        patch("app.jobs.content_gen.SessionLocal", session_factory),
+        patch("app.jobs.content_gen.LLMClient") as mock_cls,
     ):
-        result = asyncio.run(_generate_personalized_for_all(count=2))
+        result = asyncio.run(generate_personalized_for_all(count=2))
         mock_cls.assert_not_called()
 
     assert result == {"total_vocab_created": 0, "users_processed": 0}
@@ -608,10 +608,10 @@ def test_generate_personalized_for_all_handles_no_users(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     with (
-        patch("app.workers.content_gen.SessionLocal", session_factory),
-        patch("app.workers.content_gen.LLMClient") as mock_cls,
+        patch("app.jobs.content_gen.SessionLocal", session_factory),
+        patch("app.jobs.content_gen.LLMClient") as mock_cls,
     ):
-        result = asyncio.run(_generate_personalized_for_all(count=5))
+        result = asyncio.run(generate_personalized_for_all(count=5))
         mock_cls.assert_not_called()
 
     assert result == {"total_vocab_created": 0, "users_processed": 0}

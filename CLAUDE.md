@@ -2,8 +2,8 @@
 
 ## project
 - name: RecallAI
-- stack: python 3.11, fastapi (json api only), react 19 spa (vite + tanstack router + tanstack query + zustand, tailwind css v4), postgres via sqlalchemy 2.0 (async), redis, celery 5, pydantic v2, openai sdk (via openrouter)
-- deployed on railway: web service + celery worker + celery beat + postgres addon + redis addon
+- stack: python 3.11, fastapi (json api only), react 19 spa (vite + tanstack router + tanstack query + zustand, tailwind css v4), postgres via sqlalchemy 2.0 (async), pydantic v2, openai sdk (via openrouter)
+- deployed on railway: web service + nightly cron service + postgres addon
 - monorepo managed with pnpm workspaces + turborepo
 - domain: spaced-repetition vocabulary trainer with llm-generated content for esl learners
 - solo project — no team, no staging branch, main only
@@ -15,11 +15,11 @@
     /api/                     ← fastapi application (json api only, no server-rendered views)
       /app/
         /api/                 ← route handlers (async def only)
-        /core/                ← config, db engine, celery app, logging
+        /core/                ← config, db engine, logging
         /models/              ← sqlalchemy 2.0 orm models
         /schemas/             ← pydantic v2 schemas (request, response, llm output)
         /services/            ← business logic layer
-        /workers/             ← celery task definitions (sync def only)
+        /jobs/                ← nightly cron entrypoint + async job functions
       /alembic/               ← migrations (one per logical change)
       /tests/                 ← mirrors /app structure, named test_*.py
       /plans/                 ← pre-coding plan documents (required for 3+ file tasks)
@@ -44,8 +44,7 @@
 - `.env` lives at the repo root (copied from `.env.example`); `pydantic-settings` reads it relative to the CWD where uvicorn runs, which is the repo root.
 - dev: `pnpm dev` runs the FastAPI json api (uvicorn, `--reload`) and the React SPA (`pnpm --filter web dev`, Vite on :5173) concurrently; Vite proxies `/api`, `/auth` to the api on :8000. open http://localhost:5173 in dev.
 - prod (local sanity): `pnpm start` → same command, no `--reload`, binds `0.0.0.0:$PORT` (defaults to 8000).
-- celery worker (local or railway): `pnpm worker` → `uv run --project . celery -A app.core.celery_app:celery_app --workdir apps/api worker --loglevel=info`.
-- celery beat (local or railway): `pnpm beat` → same with `beat` instead of `worker`.
+- nightly content generation runs as a Railway cron service (`railway.cron.json` + `railpack.cron.json`): `cd apps/api && uv run python -m app.jobs.nightly` at 18:00 UTC daily. the entrypoint skips (logs + exits 0) unless `RAILWAY_ENVIRONMENT_NAME=production` or `NIGHTLY_FORCE=1` — so PR-environment clones never burn LLM tokens. run it locally with `NIGHTLY_FORCE=1` (real LLM calls).
 - tests: `pnpm test` (full suite) or `uv run pytest <path>` for a single file.
 - lint + types: `pnpm lint` runs ruff check + ruff format check + mypy strict on `apps/api/app`.
 
@@ -57,17 +56,16 @@
 - to re-trigger a stuck PR: `gh run rerun <run-id>` or push an empty commit: `git commit --allow-empty -m "chore: retrigger CI" && git push`.
 
 ### railway
-- one repo, three services. each service has its own railpack config (skips the Node + Tailwind build for worker/beat — faster deploys, smaller images) AND its own railway config (so only web runs `alembic upgrade head` pre-deploy). Pair the two config files per service via env vars — no dashboard start-command override needed.
+- one repo, two services. each service has its own railpack config (skips the Node + Tailwind build for the cron service — faster deploys, smaller images) AND its own railway config (so only web runs `alembic upgrade head` pre-deploy). Pair the two config files per service via env vars — no dashboard start-command override needed.
   - **web**: default `railway.json` + `railpack.json`. Railpack installs python + uv + nodejs + pnpm, runs `pnpm install --frozen-lockfile`, `uv sync`, then `pnpm run build` to build the React SPA into `apps/web/dist`. preDeployCommand runs `alembic upgrade head`. Start: uvicorn, which serves the api under `/api` + `/auth` and the built SPA (via `apps/web/dist`) for every other path. `/healthz` healthcheck.
-  - **worker**: set `RAILWAY_CONFIG_FILE=railway.worker.json` AND `RAILPACK_CONFIG_FILE=railpack.worker.json`. Railpack installs python + uv only (no Node). No preDeployCommand. Start: celery worker.
-  - **beat**: set `RAILWAY_CONFIG_FILE=railway.beat.json` AND `RAILPACK_CONFIG_FILE=railpack.beat.json`. Same as worker. **Replicas must = 1** — duplicate beat = duplicate task enqueueing = duplicate LLM cost. Start: celery beat.
-- required env vars (all services): `DATABASE_URL`, `REDIS_URL`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `SECRET_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`. optional web-only: `SESSION_HTTPS_ONLY` (default `false` for dev; set `true` in prod so the signed session cookie carries the `Secure` flag). **no code-side defaults for the LLM trio nor `GOOGLE_REDIRECT_URI`** — `.env` (dev) and railway env (prod) are the single source of truth, so a missing var fails loudly at startup instead of silently picking a dev model or a localhost callback in prod. swap providers by setting the three `LLM_*` vars together (e.g. dev → OpenRouter + `z-ai/glm-4.5-air:free`; prod → OpenRouter + `deepseek/deepseek-v4-flash` or OpenCode Go's `https://opencode.ai/zen/go/v1` + `deepseek-v4-flash`). railway's postgres + redis addons inject `DATABASE_URL` and `REDIS_URL` automatically when attached.
+  - **nightly cron**: set `RAILWAY_CONFIG_FILE=railway.cron.json` AND `RAILPACK_CONFIG_FILE=railpack.cron.json`. Railpack installs python + uv only (no Node). No preDeployCommand. `cronSchedule: 0 18 * * *`, `restartPolicyType: NEVER`. Start: `python -m app.jobs.nightly`, which runs shared-pool generation → enrichment → personalized generation sequentially and exits. the entrypoint's env guard (`RAILWAY_ENVIRONMENT_NAME=production` or `NIGHTLY_FORCE=1`) keeps PR-environment clones from burning LLM tokens.
+- required env vars (all services): `DATABASE_URL`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, `SECRET_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`. optional web-only: `SESSION_HTTPS_ONLY` (default `false` for dev; set `true` in prod so the signed session cookie carries the `Secure` flag). **no code-side defaults for the LLM trio nor `GOOGLE_REDIRECT_URI`** — `.env` (dev) and railway env (prod) are the single source of truth, so a missing var fails loudly at startup instead of silently picking a dev model or a localhost callback in prod. swap providers by setting the three `LLM_*` vars together (e.g. dev → OpenRouter + `z-ai/glm-4.5-air:free`; prod → OpenRouter + `deepseek/deepseek-v4-flash` or OpenCode Go's `https://opencode.ai/zen/go/v1` + `deepseek-v4-flash`). railway's postgres addon injects `DATABASE_URL` automatically when attached.
 - previews: use Railway `PR Environments`, not a custom GitHub deploy job. enable `PR Environments` in Project Settings -> Environments, make sure the base web service has a Railway-provided domain, and enable `Wait for CI` in the web service GitHub settings. Railway then creates and tears down preview URLs automatically per PR.
 - previews that need google sign-in: PR-environment domains change per PR and google oauth rejects unregistered redirect URIs (no wildcards), so auth flows are untestable there. instead a persistent railway `staging` environment tracks the fixed `preview` branch with a stable domain whose `/auth/callback` is registered once in the google console. deploy any branch to it with `pnpm preview:push` (force-push `HEAD:preview`; last push wins). CI runs on `preview` pushes so `Wait for CI` works. full setup in README "Fixed preview URL".
 - the SPA build (`apps/web/dist`) is gitignored; `/assets` is mounted from it and served with long-lived caching from Vite's hashed filenames.
 
 ## conventions
-- all api endpoints async; all celery tasks sync (celery 5 limitation — do not use async def in tasks)
+- all api endpoints async; nightly job functions are async and run under one `asyncio.run` in the cron entrypoint
 - pydantic v2 schemas for every request/response body and every llm output boundary
 - sqlalchemy 2.0 declarative style with Mapped[] type annotations on every column — no legacy style
 - routes return raw pydantic models for json endpoints; fastapi handles serialization — the api is json-only, no server-rendered html
@@ -92,9 +90,10 @@
 - chose google oauth over password auth (may 2026): simpler for solo/small-user-base, no password storage risk
 - chose htmx + jinja2 over next.js (may 2026): spaced-repetition ui is server-driven (show card, reveal, rate, next) — no complex client state; keeps entire stack in python, eliminates context switching, ships faster; next.js is a candidate if a mobile-web hybrid is needed later
 - chose react 19 spa (vite + tanstack router/query + zustand) over htmx + jinja2 (2026-06, superseding the above ADR): interactions grew past what htmx round-trips could cleanly express (audio recording/playback, pronunciation checks, browser-extension code sharing); fastapi is now a json-only api, the SPA is a separate `apps/web` workspace built by vite and served as static files by uvicorn in prod; frontend types are generated from the api's openapi schema instead of hand-kept in sync
+- chose railway cron over celery beat + worker (2026-07-07): zero runtime task enqueueing existed — celery only ran 3 nightly beat jobs; one cron service running app.jobs.nightly sequentially replaces 2 always-on services + redis addon, cuts idle cost, makes step ordering explicit; celery is the fallback if runtime enqueueing ever returns
 
 ## current focus
-- daily content generation pipeline: celery beat → selection service → llm enrichment → pydantic validation → persist
+- daily content generation pipeline: railway cron (`app.jobs.nightly`) → selection service → llm enrichment → pydantic validation → persist
 - pydantic validators on every llm output: schema shape, semantic constraints (target token must appear in generated example), length bounds, content safety checks
 - retry-with-prompt-refinement loop: on validation failure, log violation + tokens spent, refine prompt with failed constraint, retry up to 3 times, fall back to curated default
 

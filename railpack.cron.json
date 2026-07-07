@@ -5,6 +5,6 @@
     "python": "3.11"
   },
   "deploy": {
-    "startCommand": "uv run --project . celery -A app.core.celery_app:celery_app --workdir apps/api beat --loglevel=info"
+    "startCommand": "sh -c 'cd apps/api && uv run python -m app.jobs.nightly'"
   }
 }
