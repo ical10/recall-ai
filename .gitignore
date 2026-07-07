@@ -12,10 +12,6 @@ build/
 # Alembic
 alembic/versions/*.pyc
 
-# Celery
-celerybeat-schedule
-celerybeat.pid
-
 # Node
 node_modules/
 .pnpm-store/
