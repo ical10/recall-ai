@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.celery_app import celery_app
@@ -111,46 +111,6 @@ async def _generate_shared_pool(count: int) -> dict[str, int | str]:
     return {"vocab_created": vocab_created, "reviews_created": reviews_created}
 
 
-@celery_app.task(name="content_gen.generate_personalized", max_retries=2)  # type: ignore[untyped-decorator]
-def generate_personalized(user_id: str, count: int = 5) -> dict[str, int | str]:
-    return asyncio.run(_generate_personalized(user_id, count))
-
-
-async def _generate_personalized(user_id: str, count: int = 5) -> dict[str, int | str]:
-    uid = UUID(user_id)
-    async with SessionLocal() as session:
-        user = await session.get(User, uid)
-        if user is None:
-            logger.warning("personalized_skipped_user_missing", extra={"user_id": user_id})
-            return {"skipped": "user_missing"}
-
-        total = (
-            await session.execute(
-                select(func.count(Review.id)).where(
-                    Review.user_id == uid, Review.last_reviewed_at.is_not(None)
-                )
-            )
-        ).scalar_one()
-        current_milestone = (int(total) // 30) * 30
-        if current_milestone > 0 and user.last_personalized_milestone >= current_milestone:
-            logger.info(
-                "personalized_skipped_already_fired_for_milestone",
-                extra={"user_id": user_id, "milestone": current_milestone},
-            )
-            return {
-                "skipped": "already_fired_for_milestone",
-                "milestone": current_milestone,
-            }
-
-        llm = LLMClient()
-        result = await _generate_personalized_batch(session, user, count, llm)
-        if "vocab_created" in result:
-            user.last_personalized_milestone = current_milestone
-        await session.commit()
-
-    return result
-
-
 async def _generate_personalized_batch(
     session: AsyncSession,
     user: User,
@@ -175,12 +135,22 @@ async def _generate_personalized_batch(
                 select(VocabItem.token)
                 .join(Review, Review.vocab_item_id == VocabItem.id)
                 .where(Review.user_id == user.id)
+                .order_by(Review.last_reviewed_at.desc().nulls_last())
+                .limit(300)
             )
         )
         .scalars()
         .all()
     )
-    exclude_tokens = list({*global_tokens, *user_tokens})
+    exclude_tokens: list[str] = []
+    seen: set[str] = set()
+    for token in [*user_tokens, *global_tokens]:
+        if token in seen:
+            continue
+        seen.add(token)
+        exclude_tokens.append(token)
+        if len(exclude_tokens) == 500:
+            break
 
     try:
         batch = generate_vocab_batch(
@@ -209,8 +179,20 @@ def generate_personalized_for_all(count: int = 5) -> dict[str, int | str]:
 
 
 async def _generate_personalized_for_all(count: int) -> dict[str, int | str]:
+    active_cutoff = datetime.now(UTC) - timedelta(days=7)
     async with SessionLocal() as session:
-        user_ids = list((await session.execute(select(User.id))).scalars().all())
+        user_ids = list(
+            (
+                await session.execute(
+                    select(User.id)
+                    .join(Review, Review.user_id == User.id)
+                    .where(Review.last_reviewed_at >= active_cutoff)
+                    .distinct()
+                )
+            )
+            .scalars()
+            .all()
+        )
 
     if not user_ids:
         return {"total_vocab_created": 0, "users_processed": 0}
@@ -225,28 +207,19 @@ async def _generate_personalized_for_all(count: int) -> dict[str, int | str]:
             if user is None:
                 continue
 
-            existing = (
-                (
-                    await session.execute(
-                        select(VocabItem)
-                        .join(Review, Review.vocab_item_id == VocabItem.id)
-                        .where(VocabItem.source == "personalized", Review.user_id == uid)
+            already_ran_today = (
+                await session.execute(
+                    select(
+                        exists().where(
+                            VocabItem.source == "personalized",
+                            Review.vocab_item_id == VocabItem.id,
+                            Review.user_id == uid,
+                            VocabItem.created_at >= start_of_day,
+                        )
                     )
                 )
-                .scalars()
-                .all()
-            )
-            if any(
-                v.created_at is not None
-                and (
-                    (v.created_at.tzinfo is not None and v.created_at >= start_of_day)
-                    or (
-                        v.created_at.tzinfo is None
-                        and v.created_at.replace(tzinfo=UTC) >= start_of_day
-                    )
-                )
-                for v in existing
-            ):
+            ).scalar_one()
+            if already_ran_today:
                 continue
 
             llm = LLMClient()
