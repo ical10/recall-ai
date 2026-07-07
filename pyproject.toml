@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Spaced-repetition vocabulary trainer for ESL learners."
 requires-python = ">=3.11,<3.12"
 dependencies = [
-    "fastapi>=0.138.2",
+    "fastapi>=0.139.0",
     "uvicorn[standard]>=0.32",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.2",
@@ -15,9 +15,9 @@ dependencies = [
     "alembic>=1.18.5",
     "itsdangerous>=2.0",
     "python-multipart>=0.0.32",
-    "boto3>=1.43.37",
+    "boto3>=1.43.42",
     "google-genai>=2.10.0",
-    "google-auth>=2.0",
+    "google-auth>=2.55.2",
 ]
 
 [dependency-groups]
