@@ -29,46 +29,39 @@ Generic deck apps nail the timing but leave curation to the learner. Most kids (
      │ HTTPS                                               │
      │ OAuth + React SPA                                   │ POST /chat
      ▼                                                     │ completions
-┌─────────────────┐   ┌──────────────────┐   ┌─────────────┴──────┐
-│   Web service   │   │   Beat service   │   │   Worker service   │
-│  (recall-ai)    │   │     replicas=1   │   │                    │
-│  FastAPI+uvicorn│   │  Celery scheduler│   │   Celery worker    │
-│  serves React   │   │ 18:00 + 19:00 UTC│   │  consumes tasks    │
-└────┬────────────┘   └────────┬─────────┘   └─────┬─────────▲────┘
-     │                         │ enqueues          │ persists│ pulls
-     │ session +               │ scheduled tasks   │ vocab + │ tasks
-     │ user CRUD               ▼                   │ reviews │
-     │           ┌───────────────────────────┐     │         │
-     │           │       Redis (addon)       │◄────┘         │
-     │           │   broker + result backend │───────────────┘
-     │           └───────────────────────────┘
-     │                         ▲
-     │ alembic migrations      │ (worker does NOT pub here;
-     │ (preDeployCommand)      │  it only consumes)
-     ▼                         │
+┌─────────────────┐            ┌───────────────────────────┴──────┐
+│   Web service   │            │      Nightly cron service        │
+│  (recall-ai)    │            │  Railway cron: 18:00 UTC daily   │
+│  FastAPI+uvicorn│            │  `python -m app.jobs.nightly`    │
+│  serves React   │            │  shared pool → enrich → personal │
+└────┬────────────┘            └────────┬─────────────────────────┘
+     │                                  │
+     │ session +                        │ persists vocab + reviews
+     │ user CRUD                        │ (runs to completion, exits)
+     │                                  │
+     │ alembic migrations               │
+     │ (preDeployCommand)               │
+     ▼                                  ▼
 ┌─────────────────────────────────────────────────┐
 │              Postgres (addon)                   │
 │  users · vocab_items · reviews · interest_tags  │
 └─────────────────────────────────────────────────┘
-                       ▲
-                       │ persists vocab generation results
-                       └─── (from Worker)
 ```
 
-### How the three services collaborate
+### How the two services collaborate
 
-| Service    | Process              | Responsibility                                          | Talks to                 |
-| ---------- | -------------------- | ------------------------------------------------------- | ------------------------ |
-| **web**    | `uvicorn` (async)    | OAuth, JSON API, serves the React SPA build            | Postgres                 |
-| **beat**   | Celery beat (cron)   | Enqueues nightly content-generation tasks (UTC 18 & 19) | Redis                    |
-| **worker** | Celery worker (sync) | Pulls tasks, calls LLM, validates, persists vocab       | Redis, Postgres, LLM API |
+| Service     | Process                        | Responsibility                                                    | Talks to           |
+| ----------- | ------------------------------ | ----------------------------------------------------------------- | ------------------ |
+| **web**     | `uvicorn` (async)              | OAuth, JSON API, serves the React SPA build                       | Postgres           |
+| **nightly** | Railway cron (18:00 UTC daily) | Runs shared-pool gen → enrichment → personalized gen sequentially | Postgres, LLM API  |
 
 Key design choices baked into the topology:
 
 - **Web never calls the LLM.** Request-path latency stays bounded; LLM hiccups can't 500 the dashboard.
-- **Beat has `replicas=1`** in production. Duplicate beats = duplicate enqueues = duplicate API spend.
-- **Worker is the only writer of generated content.** All LLM output flows through a Pydantic v2 validator before it touches Postgres.
-- **Alembic runs as a Railway `preDeployCommand` on the web service only.** Worker and beat reuse the migrated schema; they never race the migrator.
+- **The cron job runs the three steps sequentially in one process**, then exits. No broker, no always-on worker, and step ordering is explicit in `app/jobs/nightly.py`.
+- **The nightly job is the only writer of generated content.** All LLM output flows through a Pydantic v2 validator before it touches Postgres.
+- **The nightly job refuses to run outside production** (unless `NIGHTLY_FORCE=1`), so Railway PR-environment clones can't burn LLM tokens.
+- **Alembic runs as a Railway `preDeployCommand` on the web service only.** The cron service reuses the migrated schema; it never races the migrator.
 
 ---
 
@@ -78,10 +71,11 @@ Key design choices baked into the topology:
    18:00 UTC                                           Next morning
        │                                                    │
        ▼                                                    ▼
-┌──────────────┐    enqueue     ┌──────────┐  pull  ┌────────────┐
-│  Celery beat │───────────────►│  Redis   │───────►│   Worker   │
-└──────────────┘                └──────────┘        └─────┬──────┘
-                                                          │
+┌──────────────────────────────────────────────────┐
+│  Railway cron: python -m app.jobs.nightly        │
+│  shared pool → enrichment → personalized (seq.)  │
+└──────────────────────────────────────┬───────────┘
+                                       │
                                        LLM call (timeout, ▼ retry, log tokens)
                                           ┌────────────────────────┐
                                           │      LLM Provider      │
@@ -112,7 +106,7 @@ Every LLM call is wrapped in:
 - A **hard timeout** (no retries-from-hell on a hanging upstream).
 - A **structured cost log** (tokens in, tokens out, model, latency).
 - A **retry-with-prompt-refinement loop**: on validation failure, refine the prompt with the failed constraint and retry up to 3 times before falling back to a curated default.
-- **Idempotency markers** so a retried Celery task can't double-enqueue spend.
+- **Idempotency markers** so a re-fired cron run can't double-spend on the same day.
 
 ---
 
@@ -126,8 +120,7 @@ Every LLM call is wrapped in:
 | ORM           | SQLAlchemy 2.0 (async) with typed `Mapped[]`       | Write-time typing catches model bugs                        |
 | Validation    | Pydantic v2 (strict)                               | The LLM-output safety boundary                              |
 | Database      | Postgres 16                                        | Standard; Railway addon in prod, Docker in dev              |
-| Queue / cache | Redis 7                                            | Celery broker + result backend                              |
-| Async work    | Celery 5 (worker + beat)                           | Cron scheduling for nightly content                         |
+| Nightly jobs  | Railway cron service (`app.jobs.nightly`)          | One scheduled process runs the three steps sequentially     |
 | LLM access    | OpenAI Python SDK against an OpenAI-compatible API | Swap providers via three env vars; no code change required  |
 | Auth          | Google OAuth                                       | No password storage, no liability                           |
 | Spacing       | SM-2                                               | Simple, well-understood, sufficient for the data scale      |
@@ -135,8 +128,8 @@ Every LLM call is wrapped in:
 | Lint / types  | Ruff + mypy strict                                 | Both must pass before commit                                |
 | Tests         | pytest (backend), Vitest + Testing Library (frontend) | Happy-path + validation-failure per Pydantic schema; component/route tests for the SPA |
 | Frontend types | openapi-typescript, generated from FastAPI's `/openapi.json` | Frontend types stay in sync with Pydantic schemas without hand-maintained duplicates |
-| Monorepo      | pnpm workspaces + Turborepo                        | One repo, three Railway services                            |
-| Hosting       | Railway (web + worker + beat + Postgres + Redis)   | One project, per-service `railway.*.json` configs           |
+| Monorepo      | pnpm workspaces + Turborepo                        | One repo, two Railway services                              |
+| Hosting       | Railway (web + nightly cron + Postgres)            | One project, per-service `railway.*.json` configs           |
 
 ---
 
@@ -162,15 +155,21 @@ uv sync --frozen
 ./scripts/dev_reset.sh
 ```
 
-(Postgres and Redis start automatically — `pnpm dev`, `pnpm worker`, and `pnpm beat` all run `docker compose up -d` before their main process.)
+(Postgres starts automatically — `pnpm dev` runs `docker compose up -d` before its main process.)
 
 ## Running
 
 ```bash
 pnpm dev      # FastAPI api (:8000) + Vite dev server for the React SPA (:5173, proxies /api and /auth)
-pnpm worker   # Celery worker (LLM content generation)
-pnpm beat     # Celery beat (daily scheduling)
 ```
+
+To exercise the nightly content-generation job locally (real LLM calls — costs tokens):
+
+```bash
+cd apps/api && NIGHTLY_FORCE=1 uv run python -m app.jobs.nightly
+```
+
+Without `NIGHTLY_FORCE=1` (or `RAILWAY_ENVIRONMENT_NAME=production`) the job logs a skip line and exits — this guard keeps Railway PR-environment clones from burning LLM tokens.
 
 ## Railway preview environments
 
@@ -196,7 +195,7 @@ Native PR environments mint a fresh domain per PR, but Google OAuth only accepts
 
 One-time setup:
 
-1. In Railway, create a persistent `staging` environment; point the `web` service (plus worker/beat if the preview needs them) at the **`preview` branch** as its deploy source.
+1. In Railway, create a persistent `staging` environment; point the `web` service at the **`preview` branch** as its deploy source.
 2. Generate a Railway domain for `web` in that environment — this URL never changes.
 3. Set the staging environment variables like production, with `GOOGLE_REDIRECT_URI=https://<staging-domain>/auth/callback` and `SESSION_HTTPS_ONLY=true`.
 4. In the Google Cloud console, add `https://<staging-domain>/auth/callback` to the OAuth client's authorized redirect URIs — once, done forever.
@@ -214,7 +213,7 @@ Open http://localhost:5173 in dev — Vite serves the SPA there and proxies API 
 
 ## Run the full stack in Docker
 
-End-to-end smoke test of the deploy artifact (Postgres + Redis + the web image Railway will run):
+End-to-end smoke test of the deploy artifact (Postgres + the web image Railway will run):
 
 ```bash
 cp .env.example .env   # set GOOGLE_CLIENT_*, LLM_*, SECRET_KEY
@@ -250,11 +249,11 @@ docker compose down -v   # stop, wipe data
 apps/api/
   app/
     api/         route handlers (async, JSON-only — no server-rendered views)
-    core/        config, db engine, celery app, logging
+    core/        config, db engine, logging
     models/      SQLAlchemy 2.0 ORM (users, vocab_items, reviews)
     schemas/     Pydantic v2 (request, response, LLM-output contracts)
     services/    business logic (sm2, selection, enrichment, llm, stats)
-    workers/     Celery tasks (sync only — Celery 5 constraint)
+    jobs/        nightly cron entrypoint + async job functions
   alembic/       migrations
   tests/         mirrors app/ structure
 apps/web/
@@ -267,7 +266,7 @@ apps/web/
 apps/extension/  browser extension — stub only on main (package.json + tsconfig, no source yet)
 packages/shared/ shared enums + constants
 .github/         CI (ruff + mypy + pytest + alembic round-trip + gitleaks)
-railway.*.json   per-service deploy config (web / worker / beat)
+railway.*.json   per-service deploy config (web / cron)
 railpack.*.json  per-service build config
 ```
 

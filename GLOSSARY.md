@@ -13,7 +13,7 @@ A user's relationship to a Vocab Item — the SM-2 state (ease, interval, repeti
 _Avoid_: card (in code), schedule
 
 **Enrichment**:
-The pipeline step that fills a Vocab Item's `definition` and `example_sentence` from the LLM. Runs nightly via Celery beat against pending items.
+The pipeline step that fills a Vocab Item's `definition` and `example_sentence` from the LLM. Runs nightly via the Railway cron job (`app.jobs.nightly`) against pending items.
 
 **Enrichment Status**:
 A binary state encoded directly on the Vocab Item: `definition == ""` means **pending**, non-empty means **ready**. There is no enum or status column — the empty string is the sentinel. See [ADR-0001](./docs/adr/0001-empty-string-sentinel-for-enrichment-state.md).

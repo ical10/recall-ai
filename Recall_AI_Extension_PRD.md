@@ -120,7 +120,7 @@ Two phases:
   **SIMBA 3.0**: streaming-native (low first-byte latency, matters for auto-play-on-flip), top-tier
   voice quality, SSML prosody control, and competitive cost at $10/M chars ≈ **$0.15/mo at this
   volume**. Strict-$0 alternative: **Google Gemini Flash TTS** (free tier covers the volume).
-  Self-hosted offline fallback: **Piper** in the Celery worker (no quality guarantee). Clips stored on
+  Self-hosted offline fallback: **Piper** in the nightly job (no quality guarantee). Clips stored on
   a **Railway volume**, served via the existing `/static` handler with `Cache-Control`; storage
   upgrade if bandwidth grows is Cloudflare R2 (free egress). The render step sits behind a
   `synthesize(text) -> url` seam, so the engine swaps without touching callers. No letter-by-letter
@@ -142,7 +142,7 @@ Two phases:
   caching/invalidation keys.
 - **Review-session store** (frontend, Zustand): state machine `idle → showing → revealed → rating →
   next`, holding the current batch in memory. This is the heart of the client UX.
-- **Audio render step** (backend, in the content pipeline / Celery worker, new): after content is
+- **Audio render step** (backend, in the content pipeline / nightly job, new): after content is
   generated and Pydantic-validated, render TTS clips for the word (spelled) and the example sentence
   via the TTS engine (default Speechify SIMBA 3.0; Google Gemini Flash TTS for strict-$0; Piper as
   self-hosted fallback), store them on the Railway volume, and persist the clip URLs on the card.
@@ -219,7 +219,7 @@ test.
   extension is an adult/power-user surface. For the portfolio goal this is acceptable; if it ever
   goes to real young users, revisit who installs and operates it.
 - **Cost guardrails unchanged:** every LLM call in new surfaces keeps timeout + retry + token-cost
-  logging; no Celery retry on validation failures.
+  logging; no automatic retry on validation failures.
 - **DoD (from source PRD):** SPA with zero HTMX/Jinja2 left; every extension card read aloud;
   60FPS archive scroll; initial review load <500ms; extension rating updates the backend SM-2 curve.
 - **Why the perf targets:** voice-first review demands near-instant audio-on-flip; per-interaction

@@ -1,5 +1,7 @@
 # Celery tasks reuse the async DB stack via `asyncio.run`
 
+> **Superseded (2026-07-07)**: Celery + Redis were removed entirely; nightly jobs now run as async functions under a single `asyncio.run` in a Railway cron service (`app.jobs.nightly`). The core call stands — one async engine, no parallel sync stack. See the "chose railway cron over celery beat + worker" decision in CLAUDE.md.
+
 Celery 5 tasks are sync at the entrypoint, which tempts the standard pattern of a parallel sync SQLAlchemy engine (`psycopg` driver, `sessionmaker`, etc.) just for the worker. We rejected that pattern: every Celery task in this codebase will be a sync `@celery_app.task` wrapper that immediately delegates to an async coroutine via `asyncio.run(...)`. The coroutine uses the existing `app.core.db.SessionLocal` (asyncpg). One engine, one driver, one connection pool to size, and DB-touching service functions (`select_unenriched`, future `compute_user_stats`, etc.) can be shared across web routes and tasks without duplication.
 
 Considered (a) a separate sync engine + `psycopg[binary]` dependency — rejected for the duplication, two pools fighting Railway's 22-connection budget, and the inability to share service code; (b) `celery worker -P solo` with a long-lived event loop — rejected as off-the-beaten-path. The overhead of `asyncio.run` per task is ~5ms against multi-second LLM calls, so the cost is negligible. The constraint to remember: every task body must be self-contained per `asyncio.run` — sessions, connections, and any cached objects must not escape the call.

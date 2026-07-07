@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -8,7 +7,6 @@ from uuid import UUID
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.celery_app import celery_app
 from app.core.db import SessionLocal
 from app.models.review import Review
 from app.models.user import User
@@ -23,12 +21,7 @@ from app.services.vocab_generation import generate_vocab_batch
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name="content_gen.run_daily", max_retries=3)  # type: ignore[untyped-decorator]
-def run_daily(batch_size: int = 25) -> dict[str, int]:
-    return asyncio.run(_run_daily(batch_size))
-
-
-async def _run_daily(batch_size: int) -> dict[str, int]:
+async def run_daily(batch_size: int) -> dict[str, int]:
     succeeded = 0
     failed = 0
     async with SessionLocal() as session:
@@ -55,16 +48,11 @@ async def _run_daily(batch_size: int) -> dict[str, int]:
     return {"succeeded": succeeded, "failed": failed}
 
 
-@celery_app.task(name="content_gen.generate_shared_pool", max_retries=2)  # type: ignore[untyped-decorator]
-def generate_shared_pool(count: int = 10) -> dict[str, int | str]:
-    return asyncio.run(_generate_shared_pool(count))
-
-
-async def _generate_shared_pool(count: int) -> dict[str, int | str]:
+async def generate_shared_pool(count: int) -> dict[str, int | str]:
     async with SessionLocal() as session:
         # Same-day idempotency: if any shared_pool row exists from today (UTC),
         # skip without touching the LLM. Protects against accidental double-fires
-        # (manual `celery call`, two beat processes, retried tasks).
+        # (manual runs, a double-fired cron, retried jobs).
         start_of_day = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
         already = (
             await session.execute(
@@ -173,12 +161,7 @@ async def _generate_personalized_batch(
     return {"vocab_created": vocab_created, "reviews_created": reviews_created}
 
 
-@celery_app.task(name="content_gen.generate_personalized_for_all")  # type: ignore[untyped-decorator]
-def generate_personalized_for_all(count: int = 5) -> dict[str, int | str]:
-    return asyncio.run(_generate_personalized_for_all(count))
-
-
-async def _generate_personalized_for_all(count: int) -> dict[str, int | str]:
+async def generate_personalized_for_all(count: int) -> dict[str, int | str]:
     active_cutoff = datetime.now(UTC) - timedelta(days=7)
     async with SessionLocal() as session:
         user_ids = list(
@@ -234,12 +217,7 @@ async def _generate_personalized_for_all(count: int) -> dict[str, int | str]:
     return {"total_vocab_created": total_created, "users_processed": users_processed}
 
 
-@celery_app.task(name="content_gen.render_audio")  # type: ignore[untyped-decorator]
-def render_audio(vocab_item_id: str) -> dict[str, str]:
-    return asyncio.run(_render_audio(vocab_item_id))
-
-
-async def _render_audio(vocab_item_id: str) -> dict[str, str]:
+async def render_audio(vocab_item_id: str) -> dict[str, str]:
     vid = UUID(vocab_item_id)
     async with SessionLocal() as session:
         vocab = await session.get(VocabItem, vid)
@@ -259,12 +237,7 @@ async def _render_audio(vocab_item_id: str) -> dict[str, str]:
     }
 
 
-@celery_app.task(name="content_gen.backfill_audio")  # type: ignore[untyped-decorator]
-def backfill_audio(batch_size: int = 100) -> dict[str, int]:
-    return asyncio.run(_backfill_audio(batch_size))
-
-
-async def _backfill_audio(batch_size: int) -> dict[str, int]:
+async def backfill_audio(batch_size: int) -> dict[str, int]:
     rendered = 0
     skipped = 0
     async with SessionLocal() as session:

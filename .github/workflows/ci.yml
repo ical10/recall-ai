@@ -22,7 +22,6 @@ jobs:
 
     env:
       DATABASE_URL: "postgresql+asyncpg://test:test@localhost:5432/test"
-      REDIS_URL: "redis://localhost:6379/0"
       LLM_API_KEY: "test-key"
       LLM_BASE_URL: "https://test.invalid/v1"
       LLM_MODEL: "test/test-model"
@@ -101,7 +100,6 @@ jobs:
 
     env:
       DATABASE_URL: "postgresql://test:test@localhost:5432/test"
-      REDIS_URL: "redis://localhost:6379/0"
       LLM_API_KEY: "test-key"
       LLM_BASE_URL: "https://test.invalid/v1"
       LLM_MODEL: "test/test-model"
