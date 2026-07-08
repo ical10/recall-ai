@@ -9,11 +9,11 @@ A word or phrase a learner is studying, with its language, definition, and examp
 _Avoid_: word (ambiguous), card (per-user concept)
 
 **Review**:
-A user's relationship to a Vocab Item — the SM-2 state (ease, interval, repetitions), due date, and suspension flag.
+A user's relationship to a Vocab Item — the spaced-repetition state (ease, interval, repetitions), due date, and suspension flag.
 _Avoid_: card (in code), schedule
 
 **Enrichment**:
-The pipeline step that fills a Vocab Item's `definition` and `example_sentence` from the LLM. Runs nightly via the Railway cron job (`app.jobs.nightly`) against pending items.
+The pipeline step that fills a Vocab Item's `definition` and `example_sentence` from the LLM. Runs nightly via `app.jobs.nightly` against pending items.
 
 **Enrichment Status**:
 A binary state encoded directly on the Vocab Item: `definition == ""` means **pending**, non-empty means **ready**. There is no enum or status column — the empty string is the sentinel. See [ADR-0001](./docs/adr/0001-empty-string-sentinel-for-enrichment-state.md).
@@ -29,13 +29,10 @@ Creating a Review that links a User to a shared Vocab Item — enrolling all use
 _Avoid_: subscribe, assign
 
 **User Timezone**:
-Each User has a `timezone` (IANA name, default `"UTC"`). All user-facing date bucketing — streak day boundaries, "due today" cutoff — is evaluated in this timezone. The nightly content-gen cron is global and stays UTC-anchored. See [ADR-0004](./docs/adr/0004-per-user-timezone-on-user-model.md).
+Each User has a `timezone` (IANA name, default `"UTC"`). All user-facing date bucketing — streak day boundaries, "due today" cutoff — is evaluated in this timezone. The nightly content job is global and stays UTC-anchored. See [ADR-0004](./docs/adr/0004-per-user-timezone-on-user-model.md).
 
 **Quality Rating**:
-The user's self-assessed recall difficulty for a Review, expressed on the SM-2 scale: Again (0), Hard (2), Good (4), Easy (5). Again resets repetitions; Hard counts as a pass with a small ease/interval penalty; Good and Easy progress normally. See [ADR-0006](./docs/adr/0006-hard-rating-as-anki-like-penalty.md).
-
-**Again Re-queue** _(legacy — not in the current React/JSON path)_:
-An in-session retry mechanism layered on top of SM-2 from the original HTMX review page (removed in #44). The user rates a card "Again" (quality=0); the row still gets the canonical SM-2 1-day push, but the card was also held in a short-lived per-session list and resurfaced ~10 minutes later via a signed session cookie. The React/JSON path (`daily_batch`) has no resurface logic — only the SM-2 row update applies. See [ADR-0002](./docs/adr/0002-session-cookie-again-requeue.md) for status.
+The user's self-assessed recall difficulty for a Review: Again (0), Hard (2), Good (4), Easy (5). Again resets repetitions; Hard counts as a pass with a small ease/interval penalty; Good and Easy progress normally. See [ADR-0006](./docs/adr/0006-hard-rating-as-anki-like-penalty.md).
 
 ## Relationships
 
@@ -43,7 +40,7 @@ An in-session retry mechanism layered on top of SM-2 from the original HTMX revi
 - Adding a shared-pool **Vocab Item** **enrolls** every user — one new **Review** each (idempotent on the unique constraint)
 - A **Vocab Item** progresses through one **Enrichment**: pending → ready
 - A **Review** appears in `/review` only when its Vocab Item is **ready** AND the Review is **due** AND not **suspended**
-- A **Quality Rating** drives the SM-2 update that sets the next `due_at` and `interval_days` on a Review
+- A **Quality Rating** drives the scheduling update that sets the next `due_at` and `interval_days` on a Review
 
 ## Example dialogue
 

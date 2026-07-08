@@ -27,4 +27,4 @@ the project doesn't use (reconsider) or there's a real gap (note it).
 If your output contradicts a decision in `CLAUDE.md`'s architecture-decisions section, surface it
 explicitly rather than silently overriding:
 
-> _Contradicts the "htmx over next.js" decision (May 2026) — but worth reopening because…_
+> _Contradicts the "React SPA owns the frontend" decision (June 2026) — but worth reopening because..._
