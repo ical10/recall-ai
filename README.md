@@ -1,315 +1,287 @@
 # RecallAI
 
-A spaced-repetition vocabulary trainer with nightly LLM-generated content, built for English-as-a-Second-Language learners.
+<p align="center">
+  <img src="./apps/web/public/og.png" alt="RecallAI - Words that stick. Memory that grows." width="900" />
+</p>
 
-> Five minutes a day. The words stick — because you caught them right before you forgot.
+<p align="center">
+  <strong>Open-source spaced-repetition vocabulary practice with nightly AI-generated lessons.</strong>
+</p>
 
-RecallAI takes the forgetting curve seriously. Instead of shipping a static deck and hoping users grind through it, the app **generates a fresh, personalised batch of vocabulary every night** (kid-safe sentences, age-appropriate definitions, topics that match the learner's interests) and schedules every word using the classic **SM-2** algorithm — the same engine Anki has shipped for two decades. Easy words drift weeks into the future; hard words come back tomorrow.
+<p align="center">
+  <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-06A77D.svg" /></a>
+  <img alt="Status: production-proven PoC" src="https://img.shields.io/badge/status-production--proven%20PoC-FF6B35.svg" />
+  <img alt="Bring your own API key" src="https://img.shields.io/badge/LLM-bring%20your%20own%20key-3A86FF.svg" />
+  <img alt="Stack: FastAPI + React" src="https://img.shields.io/badge/stack-FastAPI%20%2B%20React-1A1A2E.svg" />
+</p>
 
----
+RecallAI is a proof-of-concept vocabulary trainer for ESL learners. It generates fresh, kid-safe English practice, plays reference audio, checks pronunciation, and schedules every word with a battle-tested spaced-repetition algorithm so learners review it right before it fades.
 
-## Why this exists
+It has shipped as a real production release, but it is also meant to be forked: bring your own database, your own LLM provider, your own keys, your own learner profile, and shape it into your own language-learning product.
 
-Two things have to be true for vocabulary to actually stick:
+## What It Does
 
-1. **The content has to be worth learning** — relevant, age-appropriate, and tied to topics the learner cares about.
-2. **The review timing has to match the forgetting curve** — words seen too often waste attention; words seen too rarely fade.
+| Flow | What RecallAI does | Why it matters |
+| --- | --- | --- |
+| Generate | Creates new vocabulary and examples with an OpenAI-compatible LLM | Learners get fresh practice instead of a static deck |
+| Validate | Parses model output through Pydantic before saving | Bad AI output does not go straight into the product |
+| Review | Shows due words in a web platform practice loop | The learner gets a focused daily session |
+| Listen | Plays reference word and sentence audio | Pronunciation is part of the learning loop |
+| Speak | Records a short clip and returns a pronunciation verdict | Feedback happens inside the review flow |
+| Schedule | Updates the next review date with a battle-tested spaced-repetition algorithm | Easy words wait; hard words come back sooner |
 
-Generic deck apps nail the timing but leave curation to the learner. Most kids (and most parents) don't curate. RecallAI takes both jobs off the table: **an LLM generates a personalised batch of cards every night, and SM-2 decides exactly when each card resurfaces.** The learner just shows up.
+## Why This Exists
 
----
+Most vocabulary tools solve only half the problem.
+
+| Problem | Result |
+| --- | --- |
+| Static decks get stale | Learners repeat generic words that may not match their interests |
+| Manual curation takes work | Learners can set preferences and get more relevant decks automatically |
+| AI content is trusted too easily | Awkward or unsafe output can leak into the lesson |
+| Practice happens at the wrong time | Words are either over-reviewed or forgotten |
+| Audio is treated as decoration | Learners miss the listen-speak-feedback loop |
+
+RecallAI combines AI-generated content with boring reliability boundaries: schema validation, retry limits, idempotent nightly jobs, audio fallbacks, and a spaced-repetition scheduler.
+
+Spaced repetition works because it reviews information near the moment you are about to forget it. RecallAI uses the renowned SM-2 algorithm for that scheduling layer: easy words wait longer, hard words return sooner, and the daily session stays focused.
+
+## Current Status
+
+RecallAI is a production-proven PoC. It is not a polished SaaS template, but the core loop works end to end:
+
+| Area | Status |
+| --- | --- |
+| React learning app | Working |
+| Google OAuth | Working |
+| Nightly AI content generation | Working |
+| Pronunciation check | Working with configured provider |
+| TTS reference audio | Working with configured provider |
+| Browser extension | Early stub |
+| Multi-language lessons | On the roadmap |
+
+## Quick Start
+
+Requirements:
+
+| Tool | Version |
+| --- | --- |
+| Python | 3.11 |
+| uv | latest stable |
+| pnpm | 9+ |
+| Docker | latest stable, for local Postgres |
+
+Clone and install:
+
+```bash
+git clone https://github.com/ical10/recall-ai.git
+cd recall-ai
+pnpm install --frozen-lockfile
+uv sync --frozen
+cp .env.example .env
+```
+
+Fill in `.env`:
+
+```bash
+LLM_API_KEY=...
+LLM_BASE_URL=https://openrouter.ai/api/v1
+LLM_MODEL=z-ai/glm-4.5-air
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REDIRECT_URI=http://localhost:8000/auth/callback
+SECRET_KEY=change-me
+```
+
+Reset and seed the local database:
+
+```bash
+./scripts/dev_reset.sh
+```
+
+Run the app:
+
+```bash
+pnpm dev
+```
+
+Open `http://localhost:5173`.
+
+Run the nightly generator locally when you want to test real LLM calls:
+
+```bash
+cd apps/api
+NIGHTLY_FORCE=1 uv run python -m app.jobs.nightly
+```
+
+That command spends real provider tokens.
+
+## Bring Your Own Model
+
+RecallAI talks to OpenAI-compatible APIs through the OpenAI Python SDK. Swap providers by changing only these three environment variables:
+
+```bash
+LLM_API_KEY=...
+LLM_BASE_URL=...
+LLM_MODEL=...
+```
+
+Known-good examples:
+
+| Provider | Base URL | Model example |
+| --- | --- | --- |
+| OpenRouter | `https://openrouter.ai/api/v1` | `z-ai/glm-4.5-air` |
+| OpenRouter | `https://openrouter.ai/api/v1` | `deepseek/deepseek-v4-flash` |
+| OpenCode Go | `https://opencode.ai/zen/go/v1` | `deepseek-v4-flash` |
+
+Other OpenAI-compatible providers should work, but they have not all been smoke-tested.
+
+## Product Principles
+
+| Principle | Meaning |
+| --- | --- |
+| Validate AI output | Model responses are parsed before they touch Postgres |
+| Keep review fast | The web request path does not call the LLM |
+| Make audio practical | Starter audio and idempotent rendering keep the first session smooth |
+| Let the learner decide | Pronunciation feedback coaches; spaced-repetition ratings stay user-driven |
+| Make it forkable | Providers, keys, prompts, and deployment target are yours to change |
+| Keep learner data light | Store only the minimal Google profile needed for auth and personalization |
+| Do not keep voice clips | Pronunciation recordings are evaluated during the request, not stored |
+
+## Privacy-First Defaults
+
+RecallAI keeps the auth profile small: Google id, email, name, and optional avatar URL. It does not store pronunciation recordings; audio clips are read for the pronunciation check and discarded after the request.
 
 ## Architecture
 
-```
-┌──────────┐                                        ┌──────────────┐
-│   User   │                                        │ LLM Provider │
-│ (browser)│                                        │  (external)  │
-└────┬─────┘                                        └──────▲───────┘
-     │ HTTPS                                               │
-     │ OAuth + React SPA                                   │ POST /chat
-     ▼                                                     │ completions
-┌─────────────────┐            ┌───────────────────────────┴──────┐
-│   Web service   │            │      Nightly cron service        │
-│  (recall-ai)    │            │  Railway cron: 18:00 UTC daily   │
-│  FastAPI+uvicorn│            │  `python -m app.jobs.nightly`    │
-│  serves React   │            │  shared pool → enrich → personal │
-└────┬────────────┘            └────────┬─────────────────────────┘
-     │                                  │
-     │ session +                        │ persists vocab + reviews
-     │ user CRUD                        │ (runs to completion, exits)
-     │                                  │
-     │ alembic migrations               │
-     │ (preDeployCommand)               │
-     ▼                                  ▼
-┌─────────────────────────────────────────────────┐
-│              Postgres (addon)                   │
-│  users · vocab_items · reviews · interest_tags  │
-└─────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+  Learner["Learner in browser"] --> Web["React SPA + FastAPI JSON API"]
+  Web --> Postgres["Postgres"]
+  Cron["Nightly cron job"] --> LLM["OpenAI-compatible LLM"]
+  Cron --> Postgres
+  Cron --> TTS["TTS provider"]
+  Web --> Speech["Pronunciation provider"]
+  Postgres --> Web
 ```
 
-### How the two services collaborate
+The important product boundary is simple: the web app serves review sessions, while the nightly job does the slow AI work.
 
-| Service     | Process                        | Responsibility                                                    | Talks to           |
-| ----------- | ------------------------------ | ----------------------------------------------------------------- | ------------------ |
-| **web**     | `uvicorn` (async)              | OAuth, JSON API, serves the React SPA build                       | Postgres           |
-| **nightly** | Railway cron (18:00 UTC daily) | Runs shared-pool gen → enrichment → personalized gen sequentially | Postgres, LLM API  |
+The nightly job runs:
 
-Key design choices baked into the topology:
-
-- **Web never calls the LLM.** Request-path latency stays bounded; LLM hiccups can't 500 the dashboard.
-- **The cron job runs the three steps sequentially in one process**, then exits. No broker, no always-on worker, and step ordering is explicit in `app/jobs/nightly.py`.
-- **The nightly job is the only writer of generated content.** All LLM output flows through a Pydantic v2 validator before it touches Postgres.
-- **The nightly job refuses to run outside production** (unless `NIGHTLY_FORCE=1`), so Railway PR-environment clones can't burn LLM tokens.
-- **Alembic runs as a Railway `preDeployCommand` on the web service only.** The cron service reuses the migrated schema; it never races the migrator.
-
----
-
-## The learning loop
-
-```
-   18:00 UTC                                           Next morning
-       │                                                    │
-       ▼                                                    ▼
-┌──────────────────────────────────────────────────┐
-│  Railway cron: python -m app.jobs.nightly        │
-│  shared pool → enrichment → personalized (seq.)  │
-└──────────────────────────────────────┬───────────┘
-                                       │
-                                       LLM call (timeout, ▼ retry, log tokens)
-                                          ┌────────────────────────┐
-                                          │      LLM Provider      │
-                                          └─────────┬──────────────┘
-                                                    │ raw JSON
-                                                    ▼
-                                          ┌────────────────────────┐
-                                          │  Pydantic v2 validator │
-                                          │  (shape + semantic +   │
-                                          │   length + safety)     │
-                                          └─────────┬──────────────┘
-                                                    │ pass / refine / fallback
-                                                    ▼
-                                          ┌────────────────────────┐
-                                          │ Postgres: vocab_items  │
-                                          │            + reviews   │
-                                          └─────────┬──────────────┘
-                                                    │
-                          User opens /review        ▼
-                                          ┌────────────────────────┐
-                                          │   Show card → rate     │
-                                          │   SM-2 picks next date │
-                                          └────────────────────────┘
+```text
+shared pool generation -> enrichment -> personalized generation -> missing audio backfill
 ```
 
-Every LLM call is wrapped in:
+Each generated item passes through the Pydantic schema layer before it becomes a card.
 
-- A **hard timeout** (no retries-from-hell on a hanging upstream).
-- A **structured cost log** (tokens in, tokens out, model, latency).
-- A **retry-with-prompt-refinement loop**: on validation failure, refine the prompt with the failed constraint and retry up to 3 times before falling back to a curated default.
-- **Idempotency markers** so a re-fired cron run can't double-spend on the same day.
+## Tech Stack
 
----
+The product-critical pieces:
 
-## Tech stack
+| Area | Choice |
+| --- | --- |
+| Web app | React 19, TypeScript, Vite |
+| API | FastAPI JSON API |
+| Data | Postgres, SQLAlchemy 2.0 |
+| AI boundary | Pydantic v2 schemas |
+| Jobs | Cron-style nightly job |
+| Spaced repetition | SM-2 scheduling algorithm |
+| Auth | Google OAuth |
+| Audio | TTS reference clips + pronunciation evaluation |
 
-| Layer         | Choice                                             | Rationale                                                   |
-| ------------- | -------------------------------------------------- | ----------------------------------------------------------- |
-| Language      | Python 3.11                                        | Mature async, modern typing                                 |
-| Web framework | FastAPI                                            | Async-native, Pydantic-integrated                           |
-| Frontend      | React 19 SPA (Vite, TanStack Router + Query, Zustand, Tailwind v4) | Richer client interactions (audio, pronunciation checks) than round-trip HTML could cleanly support |
-| ORM           | SQLAlchemy 2.0 (async) with typed `Mapped[]`       | Write-time typing catches model bugs                        |
-| Validation    | Pydantic v2 (strict)                               | The LLM-output safety boundary                              |
-| Database      | Postgres 16                                        | Standard; Railway addon in prod, Docker in dev              |
-| Nightly jobs  | Railway cron service (`app.jobs.nightly`)          | One scheduled process runs the three steps sequentially     |
-| LLM access    | OpenAI Python SDK against an OpenAI-compatible API | Swap providers via three env vars; no code change required  |
-| Auth          | Google OAuth                                       | No password storage, no liability                           |
-| Spacing       | SM-2                                               | Simple, well-understood, sufficient for the data scale      |
-| Migrations    | Alembic                                            | One migration per logical change, never edited post-deploy  |
-| Lint / types  | Ruff + mypy strict                                 | Both must pass before commit                                |
-| Tests         | pytest (backend), Vitest + Testing Library (frontend) | Happy-path + validation-failure per Pydantic schema; component/route tests for the SPA |
-| Frontend types | openapi-typescript, generated from FastAPI's `/openapi.json` | Frontend types stay in sync with Pydantic schemas without hand-maintained duplicates |
-| Monorepo      | pnpm workspaces + Turborepo                        | One repo, two Railway services                              |
-| Hosting       | Railway (web + nightly cron + Postgres)            | One project, per-service `railway.*.json` configs           |
+## Repository Map
 
----
-
-## Prerequisites
-
-- [Docker](https://docs.docker.com/get-docker/)
-- [uv](https://docs.astral.sh/uv/)
-- [pnpm](https://pnpm.io/installation) (v9+)
-
-## Setup
-
-```bash
-# 1. Copy and fill in your credentials
-cp .env.example .env
-# Edit .env — fill LLM_API_KEY, LLM_BASE_URL, LLM_MODEL,
-#   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SECRET_KEY.
-
-# 2. Install dependencies
-pnpm install --frozen-lockfile
-uv sync --frozen
-
-# 3. Run migrations and seed sample vocabulary
-./scripts/dev_reset.sh
+```text
+apps/
+  api/
+    app/
+      api/       JSON route handlers
+      core/      settings and database setup
+      models/    SQLAlchemy users, vocab items, reviews
+      schemas/   Pydantic request, response, and LLM contracts
+      services/  product logic for generation, audio, scheduling, auth
+      jobs/      nightly generation and audio backfill entrypoints
+    alembic/     database migrations
+    tests/       backend tests
+  web/
+    src/
+      routes/      TanStack Router routes
+      components/  review, onboarding, and shared UI
+      hooks/       browser audio and interaction hooks
+      api/         generated OpenAPI types
+      store/       review-session state
+  extension/  early browser-extension scaffold
+docs/
+  adr/        architecture decisions
+scripts/      local reset and utility scripts
 ```
 
-(Postgres starts automatically — `pnpm dev` runs `docker compose up -d` before its main process.)
+## Development Commands
 
-## Running
+| Task | Command |
+| --- | --- |
+| Run app locally | `pnpm dev` |
+| Run API tests | `pnpm test` |
+| Run web tests | `pnpm test:web` |
+| Lint and type-check API | `pnpm lint` |
+| Build web app | `pnpm build` |
+| Generate frontend API types | `pnpm gen:types` |
+| Run nightly job locally | `cd apps/api && NIGHTLY_FORCE=1 uv run python -m app.jobs.nightly` |
 
-```bash
-pnpm dev      # FastAPI api (:8000) + Vite dev server for the React SPA (:5173, proxies /api and /auth)
-```
+## Customize It
 
-To exercise the nightly content-generation job locally (real LLM calls — costs tokens):
+Common fork paths:
 
-```bash
-cd apps/api && NIGHTLY_FORCE=1 uv run python -m app.jobs.nightly
-```
-
-Without `NIGHTLY_FORCE=1` (or `RAILWAY_ENVIRONMENT_NAME=production`) the job logs a skip line and exits — this guard keeps Railway PR-environment clones from burning LLM tokens.
-
-## Railway preview environments
-
-This repo uses Railway's native PR environments for previews instead of a custom deploy workflow.
-
-One-time Railway setup:
-
-1. In Railway Project Settings -> Environments, enable `PR Environments`.
-2. Optionally enable `Focused PR Environments` to skip untouched services in PR previews.
-3. Make sure the base `web` service already has a Railway-provided domain. Railway only auto-provisions PR domains when the base service has one.
-4. In the `web` service GitHub settings, enable `Wait for CI` so Railway holds preview deploys until GitHub Actions passes.
-5. Keep production autodeploy on `main`. PR environments stay isolated and are deleted when the PR closes or merges.
-
-What the repo does:
-
-- CI now runs on `main` and on `feat/**`, `fix/**`, `docs/**`, and `rizal/**` branch pushes, which satisfies Railway's current `Wait for CI` requirement.
-- Pull requests still run the same checks before Railway deploys the preview.
-- Once a PR is opened, Railway creates the preview environment and surfaces the preview URL in the Railway/GitHub integration UI.
-
-### Fixed preview URL (Google OAuth)
-
-Native PR environments mint a fresh domain per PR, but Google OAuth only accepts pre-registered redirect URIs (no wildcards), so sign-in never works on those URLs. For any preview that needs auth, use the fixed `preview` branch flow instead:
-
-One-time setup:
-
-1. In Railway, create a persistent `staging` environment; point the `web` service at the **`preview` branch** as its deploy source.
-2. Generate a Railway domain for `web` in that environment — this URL never changes.
-3. Set the staging environment variables like production, with `GOOGLE_REDIRECT_URI=https://<staging-domain>/auth/callback` and `SESSION_HTTPS_ONLY=true`.
-4. In the Google Cloud console, add `https://<staging-domain>/auth/callback` to the OAuth client's authorized redirect URIs — once, done forever.
-5. Enable `Wait for CI` for the staging `web` service (CI runs on `preview` pushes).
-
-Per-PR usage: check out the branch you want to preview and run `pnpm preview:push` (force-pushes `HEAD` to `preview`). Railway redeploys staging with that code on the fixed URL, OAuth included. One branch previews at a time — last push wins.
-
-Official docs:
-
-- https://docs.railway.com/environments
-- https://docs.railway.com/deployments/github-autodeploys
-- https://docs.railway.com/cli
-
-Open http://localhost:5173 in dev — Vite serves the SPA there and proxies API calls to :8000.
-
-## Run the full stack in Docker
-
-End-to-end smoke test of the deploy artifact (Postgres + the web image Railway will run):
-
-```bash
-cp .env.example .env   # set GOOGLE_CLIENT_*, LLM_*, SECRET_KEY
-docker compose up --build
-```
-
-`pnpm dev` is still the recommended dev loop — it gives you Vite + uvicorn hot reload. The Docker target is for verifying the production-shaped image locally.
-
-## Reset database
-
-Wipe everything and re-seed from scratch:
-
-```bash
-docker compose exec postgres psql -U user -d postgres \
-  -c "DROP DATABASE recallai;"
-docker compose exec postgres psql -U user -d postgres \
-  -c "CREATE DATABASE recallai;"
-./scripts/dev_reset.sh
-```
-
-## Teardown
-
-```bash
-docker compose down      # stop, keep data
-docker compose down -v   # stop, wipe data
-```
-
----
-
-## Project layout
-
-```
-apps/api/
-  app/
-    api/         route handlers (async, JSON-only — no server-rendered views)
-    core/        config, db engine, logging
-    models/      SQLAlchemy 2.0 ORM (users, vocab_items, reviews)
-    schemas/     Pydantic v2 (request, response, LLM-output contracts)
-    services/    business logic (sm2, selection, enrichment, llm, stats)
-    jobs/        nightly cron entrypoint + async job functions
-  alembic/       migrations
-  tests/         mirrors app/ structure
-apps/web/
-  src/
-    routes/      TanStack Router file-based routes
-    components/  page + shared UI components
-    api/         generated OpenAPI client + types
-    store/       Zustand stores (review session state)
-  dist/          Vite build output, served by uvicorn in prod
-apps/extension/  browser extension — stub only on main (package.json + tsconfig, no source yet)
-packages/shared/ shared enums + constants
-.github/         CI (ruff + mypy + pytest + alembic round-trip + gitleaks)
-railway.*.json   per-service deploy config (web / cron)
-railpack.*.json  per-service build config
-```
-
----
+| Goal | Where to start |
+| --- | --- |
+| Change the LLM provider | `.env.example`, `apps/api/app/services/llm.py` |
+| Tune generated vocabulary | `apps/api/app/services/vocab_generation.py` |
+| Change validation rules | `apps/api/app/schemas/llm.py` |
+| Customize review behavior | `apps/web/src/components/ReviewPage.tsx` |
+| Swap TTS provider | `apps/api/app/services/tts.py` |
+| Adjust scheduling | `apps/api/app/services/sm2.py` |
 
 ## Roadmap
 
-Things on the radar, not promises:
+Near-term ideas, not promises:
 
-- **FSRS upgrade.** SM-2 is great for a POC, but FSRS adapts per-card difficulty better once there's enough review data to justify it.
-- **Audio cards.** TTS for pronunciation; STT for spoken-answer rating. The recall side, not the recognition side.
-- **Image associations.** Auto-pair generated examples with safe stock imagery — visual memory anchor for ages 5–12.
-- **PWA / offline review.** Cache the next 50 due cards client-side so a kid can review on a tablet without a connection.
-- **Parent dashboard.** Weekly progress summary email, retention curves, words mastered.
-- **Multi-language support.** Today: English. Same SM-2 + LLM pipeline applies to any vocabulary target.
-- **Cost dashboard.** Per-user, per-day LLM spend with hard caps; alerts if a single user blows past a threshold.
-- **A/B-able prompt registry.** Version prompts in the DB instead of code so quality regressions can be diffed.
+- Stronger observability for token spend and nightly job outcomes
+- Better parent/teacher progress views
+- More language targets beyond English
+- FSRS scheduling once enough review data exists
+- More complete browser-extension workflow
+- Safer corpus review tools for generated content
 
----
+## Limitations
 
-## Assumptions and limitations
+- The current product is tuned for young ESL learners, not exam prep.
+- The generated content is validated, but still needs human review before serious classroom use.
+- The operator pays the LLM, TTS, and speech-evaluation bill.
+- Provider compatibility is broad in theory, but only a few providers have been tested end to end.
+- The browser extension is only a scaffold on `main`.
+- Auth stores a minimal Google profile: id, email, name, and optional avatar URL.
+- Pronunciation recordings are sent for evaluation during the request and are not stored by RecallAI.
 
-Worth being upfront about:
+## Contributing
 
-- **Target audience is narrow.** Designed for ESL learners aged ~5–12 (the Novakid demographic). Generated content, tags, and prompts are explicitly kid-safe and age-tuned. It is not a TOEFL prep app.
-- **English-only at the moment.** The pipeline isn't language-locked, but the prompt library and content-safety checks are.
-- **The operator pays the LLM bill.** Every nightly batch is a real API call against whichever provider `LLM_BASE_URL` points at; whoever deploys the app eats that cost. The retry-with-refinement loop, capped `max_tokens`, and idempotency markers keep spend bounded, but a misconfigured prompt can still burn tokens before the cap kicks in.
-- **Provider compatibility is broad in theory, narrow in practice.** Any OpenAI-API-compatible endpoint should work, swapped via the three `LLM_*` env vars. In practice only **OpenRouter** (free + paid tiers) and **OpenCode Go** have been smoke-tested end-to-end. Other compatible providers (Groq, Together AI, direct OpenAI, self-hosted vLLM) should work but haven't been verified.
-- **SM-2, not FSRS.** Chosen for simplicity and explainability. Optimal review timing is sacrificed for predictability — fine for the data scale, not optimal for it.
-- **React SPA, not server-rendered.** Chosen for richer client interactions (audio recording/playback, pronunciation checks, browser-extension code sharing) than round-trip HTML can cleanly express. Trades server-driven simplicity for a second toolchain (Vite, TypeScript, Vitest) to keep in sync with the API.
+Useful first contributions:
 
----
+- Improve setup docs
+- Add provider smoke-test notes
+- Add validation tests for generated content
+- Polish the review UI
+- Extend the browser-extension scaffold
+- Improve observability for LLM and audio costs
+
+Please do not include API keys, OAuth secrets, learner data, audio recordings, or private database dumps in issues or pull requests.
 
 ## Disclaimer
 
-RecallAI is a **personal project**. It is not affiliated with, endorsed by, or sponsored by any third-party platform, LLM provider, or tool referenced in this document.
+RecallAI is a personal open-source project. It is not affiliated with, endorsed by, or sponsored by any LLM provider, deployment platform, education company, or third-party tool mentioned here.
 
-LLM-generated content can contain factual errors, awkward phrasing, or culturally insensitive outputs even with validation in place. The retry-with-refinement loop reduces this risk; it does not eliminate it. Treat all generated material as draft-quality educational content, not authoritative reference material. If you deploy this for real learners, **review the generated corpus periodically** and keep a kill-switch on the nightly job.
-
-The codebase is provided as-is; see [LICENSE](./LICENSE).
-
----
+LLM-generated learning content can be wrong, awkward, or culturally off even with validation in place. Treat generated material as draft educational content and review the corpus if you deploy it for real learners.
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT - see [LICENSE](./LICENSE).
