@@ -72,7 +72,7 @@ jobs:
         run: pnpm test:cov
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@ad3126e916f78f00edff4ed0317cf185271ccc2  # v6.0.0
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
         with:
           files: ./coverage.xml
           token: ${{ secrets.CODECOV_TOKEN }}
