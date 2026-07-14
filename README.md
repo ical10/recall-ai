@@ -13,6 +13,7 @@
   <img alt="Status: production-proven PoC" src="https://img.shields.io/badge/status-production--proven%20PoC-FF6B35.svg" />
   <img alt="Bring your own API key" src="https://img.shields.io/badge/LLM-bring%20your%20own%20key-3A86FF.svg" />
   <img alt="Stack: FastAPI + React" src="https://img.shields.io/badge/stack-FastAPI%20%2B%20React-1A1A2E.svg" />
+  <a href="https://codecov.io/gh/ical10/recall-ai"><img alt="Coverage" src="https://codecov.io/gh/ical10/recall-ai/branch/main/graph/badge.svg" /></a>
 </p>
 
 RecallAI is a proof-of-concept vocabulary trainer for ESL learners. It generates fresh, kid-safe English practice, plays reference audio, checks pronunciation, and schedules every word with a battle-tested spaced-repetition algorithm so learners review it right before it fades.
@@ -223,6 +224,7 @@ scripts/      local reset and utility scripts
 | --- | --- |
 | Run app locally | `pnpm dev` |
 | Run API tests | `pnpm test` |
+| Run API tests with coverage | `pnpm test:cov` |
 | Run web tests | `pnpm test:web` |
 | Lint and type-check API | `pnpm lint` |
 | Build web app | `pnpm build` |
