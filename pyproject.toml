@@ -27,12 +27,20 @@ dev = [
     "ruff>=0.15.20",
     "mypy>=2.1.0",
     "aiosqlite>=0.20",
+    "pytest-cov>=7.1.0",
 ]
 
 [tool.pytest.ini_options]
 tdd_guard_project_root = "/Users/rizal/GDrive/recall-ai"
 testpaths = ["apps/api/tests"]
 pythonpath = ["apps/api"]
+
+[tool.coverage.run]
+source = ["apps/api/app"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:"]
 
 [tool.ruff]
 line-length = 100
