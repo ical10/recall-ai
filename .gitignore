@@ -25,6 +25,7 @@ node_modules/
 # Testing
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/
 
 # Mypy
