@@ -6,6 +6,21 @@ logger = logging.getLogger(__name__)
 
 
 async def run() -> None:
+    if not os.environ.get("DATABASE_URL", "").strip():
+        logger.info("nightly_skipped_database_unreachable")
+        return
+
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.core.db import engine
+
+    try:
+        async with asyncio.timeout(3), engine.connect():
+            pass
+    except (TimeoutError, OSError, SQLAlchemyError):
+        logger.info("nightly_skipped_database_unreachable")
+        return
+
     # Imported here, not at module level: importing content_gen loads Settings
     # (DATABASE_URL etc.), and the skip guard must work without any env config.
     from app.jobs import content_gen
