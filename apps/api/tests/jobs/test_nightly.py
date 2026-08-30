@@ -1,12 +1,69 @@
 import asyncio
+from unittest.mock import AsyncMock, Mock
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.jobs import content_gen, nightly
 
 
+def test_run_skips_all_stages_when_database_is_unreachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connection = AsyncMock()
+    connection.__aenter__.side_effect = ConnectionRefusedError("database unavailable")
+    monkeypatch.setattr(AsyncEngine, "connect", lambda _: connection)
+
+    stages = {
+        name: AsyncMock()
+        for name in (
+            "generate_shared_pool",
+            "run_daily",
+            "generate_personalized_for_all",
+            "backfill_audio",
+        )
+    }
+    for name, stage in stages.items():
+        monkeypatch.setattr(content_gen, name, stage)
+
+    asyncio.run(nightly.run())
+
+    for stage in stages.values():
+        stage.assert_not_awaited()
+
+
+def test_run_skips_before_connect_when_database_url_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    connect = Mock(return_value=AsyncMock())
+    monkeypatch.setattr(AsyncEngine, "connect", connect)
+    stages = {
+        name: AsyncMock()
+        for name in (
+            "generate_shared_pool",
+            "run_daily",
+            "generate_personalized_for_all",
+            "backfill_audio",
+        )
+    }
+    for name, stage in stages.items():
+        monkeypatch.setattr(content_gen, name, stage)
+    caplog.set_level("INFO", logger="app.jobs.nightly")
+
+    asyncio.run(nightly.run())
+
+    connect.assert_not_called()
+    for stage in stages.values():
+        stage.assert_not_awaited()
+    assert "nightly_skipped_database_unreachable" in caplog.messages
+
+
 def test_run_awaits_the_steps_in_order(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, int]] = []
+    connection = AsyncMock()
+    monkeypatch.setattr(AsyncEngine, "connect", lambda _: connection)
 
     async def fake_shared_pool(count: int) -> dict[str, int]:
         calls.append(("generate_shared_pool", count))
